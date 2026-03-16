@@ -1,13 +1,13 @@
 :root {
   font-family:
-    "Helvetica Neue",
-    Helvetica,
-    Arial,
+    "Avenir Next",
+    "Hiragino Sans",
+    "Yu Gothic",
     sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #0f172a;
-  background: #f5f7fb;
+  color: #16181d;
+  background: #f7f2ea;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -29,6 +29,7 @@ body {
   min-width: 320px;
 }
 
-a {
-  color: inherit;
+button,
+textarea {
+  font: inherit;
 }
