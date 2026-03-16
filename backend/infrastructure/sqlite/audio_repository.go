@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"kiria/backend/domain"
@@ -19,6 +21,10 @@ type AudioRepository struct {
 
 // NewAudioRepository は SQLite を開き、必要なテーブルを準備します。
 func NewAudioRepository(dbPath string) (*AudioRepository, error) {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		return nil, fmt.Errorf("create db directory: %w", err)
+	}
+
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)

@@ -23,7 +23,7 @@ npm install
 
 ```bash
 cd backend
-go run .
+go run cmd/server/main.go
 ```
 
 `http://localhost:8080/api/health` で API を確認できます。
