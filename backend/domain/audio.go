@@ -28,11 +28,52 @@ type SearchResponse struct {
 	Results []AudioRecord `json:"results"`
 }
 
+// MusicGenerationRequest はテキストから音楽を生成するリクエストです。
+type MusicGenerationRequest struct {
+	Prompt         string `json:"prompt"`
+	NegativePrompt string `json:"negativePrompt,omitempty"`
+	SampleCount    int    `json:"sampleCount,omitempty"`
+	Seed           *int64 `json:"seed,omitempty"`
+}
+
+// GeneratedMusicClip は生成済み音楽クリップの保存結果です。
+type GeneratedMusicClip struct {
+	Filename        string `json:"filename"`
+	MIMEType        string `json:"mimeType"`
+	FileSizeBytes   int64  `json:"fileSizeBytes"`
+	DownloadURL     string `json:"downloadUrl"`
+	IndexedAudioID  *int64 `json:"indexedAudioId,omitempty"`
+	IndexedAudioURL string `json:"indexedAudioUrl,omitempty"`
+}
+
+// MusicGenerationResponse は音楽生成APIのレスポンスです。
+type MusicGenerationResponse struct {
+	Prompt         string               `json:"prompt"`
+	NegativePrompt string               `json:"negativePrompt,omitempty"`
+	Model          string               `json:"model"`
+	ModelDisplay   string               `json:"modelDisplayName,omitempty"`
+	Clips          []GeneratedMusicClip `json:"clips"`
+}
+
+// GeneratedAudioSample は生成モデルが返した音声データです。
+type GeneratedAudioSample struct {
+	MIMEType  string
+	AudioData []byte
+}
+
+// MusicGenerationOutput は生成モデルの生レスポンスを表します。
+type MusicGenerationOutput struct {
+	Model        string
+	ModelDisplay string
+	Clips        []GeneratedAudioSample
+}
+
 // HealthResponse はヘルスチェックAPIのレスポンスです。
 type HealthResponse struct {
-	Status    string `json:"status"`
-	Timestamp string `json:"timestamp"`
-	Model     string `json:"model"`
+	Status     string `json:"status"`
+	Timestamp  string `json:"timestamp"`
+	Model      string `json:"model"`
+	MusicModel string `json:"musicModel,omitempty"`
 }
 
 // IndexResult は事前埋め込み1件の結果を表します。

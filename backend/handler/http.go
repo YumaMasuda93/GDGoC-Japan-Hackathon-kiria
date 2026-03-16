@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +37,8 @@ func (h *HTTPHandler) Routes() http.Handler {
 	mux.HandleFunc("/api/health", h.HealthHandler)
 	mux.HandleFunc("/api/search/text", h.SearchTextHandler)
 	mux.HandleFunc("/api/audio/", h.AudioFileHandler)
+	mux.HandleFunc("/api/generated/", h.GeneratedAudioFileHandler)
+	mux.HandleFunc("/api/music/generate", h.GenerateMusicHandler)
 	return logRequest(mux)
 }
 
@@ -47,9 +50,10 @@ func (h *HTTPHandler) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, domain.HealthResponse{
-		Status:    "ok",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Model:     h.service.ModelName(),
+		Status:     "ok",
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		Model:      h.service.ModelName(),
+		MusicModel: h.service.MusicModelName(),
 	})
 }
 
@@ -115,6 +119,58 @@ func (h *HTTPHandler) AudioFileHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", record.MIMEType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", record.OriginalFilename))
 	http.ServeFile(w, r, h.service.AudioPath(record.StoredFilename))
+}
+
+// GeneratedAudioFileHandler は生成済み音声ファイルをファイル名で返します。
+func (h *HTTPHandler) GeneratedAudioFileHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	storedFilename := strings.TrimPrefix(r.URL.Path, "/api/generated/")
+	if storedFilename == "" || storedFilename != path.Base(storedFilename) || storedFilename == "." {
+		writeError(w, http.StatusBadRequest, "invalid generated audio filename")
+		return
+	}
+
+	http.ServeFile(w, r, h.service.AudioPath(storedFilename))
+}
+
+// GenerateMusicHandler は Lyria による音楽生成を実行します。
+func (h *HTTPHandler) GenerateMusicHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req domain.MusicGenerationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid json: %v", err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+
+	resp, err := h.service.GenerateMusic(ctx, req)
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case strings.Contains(err.Error(), "prompt is required"),
+			strings.Contains(err.Error(), "sampleCount"),
+			strings.Contains(err.Error(), "seed cannot be used"):
+			status = http.StatusBadRequest
+		case strings.Contains(err.Error(), "music generation is not configured"):
+			status = http.StatusServiceUnavailable
+		case strings.Contains(err.Error(), "lyria music generation failed"):
+			status = http.StatusBadGateway
+		}
+		writeError(w, status, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

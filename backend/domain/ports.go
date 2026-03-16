@@ -9,6 +9,12 @@ type EmbeddingClient interface {
 	ModelName() string
 }
 
+// MusicGenerationClient はプロンプトから音楽クリップを生成するポートです。
+type MusicGenerationClient interface {
+	GenerateMusic(ctx context.Context, req MusicGenerationRequest) (MusicGenerationOutput, error)
+	ModelName() string
+}
+
 // AudioRepository は音声メタデータと埋め込みベクトルを永続化するポートです。
 type AudioRepository interface {
 	InsertAudioRecord(ctx context.Context, originalFilename, storedFilename, mimeType string, fileSizeBytes int64, embeddingModel string, embedding []float64) (AudioRecord, error)
