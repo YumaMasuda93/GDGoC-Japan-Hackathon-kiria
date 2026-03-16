@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"mime"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 // Service は事前埋め込みとオンライン検索のユースケースをまとめます。
 type Service struct {
 	embedding domain.EmbeddingClient
+	music     domain.MusicGenerationClient
 	repo      domain.AudioRepository
 	storage   domain.AudioStorage
 }
@@ -34,9 +36,24 @@ func NewService(embedding domain.EmbeddingClient, repo domain.AudioRepository, s
 	}
 }
 
+// NewServiceWithMusic は音楽生成クライアント付きでユースケースを構築します。
+func NewServiceWithMusic(embedding domain.EmbeddingClient, music domain.MusicGenerationClient, repo domain.AudioRepository, storage domain.AudioStorage) *Service {
+	service := NewService(embedding, repo, storage)
+	service.music = music
+	return service
+}
+
 // ModelName は現在利用中の埋め込みモデル名を返します。
 func (s *Service) ModelName() string {
 	return s.embedding.ModelName()
+}
+
+// MusicModelName は現在利用中の音楽生成モデル名を返します。
+func (s *Service) MusicModelName() string {
+	if s.music == nil {
+		return ""
+	}
+	return s.music.ModelName()
 }
 
 // Close はユースケースが利用する永続化資源を解放します。
@@ -152,6 +169,73 @@ func (s *Service) AudioPath(storedFilename string) string {
 	return s.storage.AudioPath(storedFilename)
 }
 
+// GenerateMusic はプロンプトから音楽を生成して保存し、返却用メタデータを返します。
+func (s *Service) GenerateMusic(ctx context.Context, req domain.MusicGenerationRequest) (domain.MusicGenerationResponse, error) {
+	if s.music == nil {
+		return domain.MusicGenerationResponse{}, errors.New("music generation is not configured")
+	}
+
+	output, err := s.music.GenerateMusic(ctx, req)
+	if err != nil {
+		return domain.MusicGenerationResponse{}, fmt.Errorf("lyria music generation failed: %w", err)
+	}
+
+	response := domain.MusicGenerationResponse{
+		Prompt:         strings.TrimSpace(req.Prompt),
+		NegativePrompt: strings.TrimSpace(req.NegativePrompt),
+		Model:          output.Model,
+		ModelDisplay:   output.ModelDisplay,
+		Clips:          make([]domain.GeneratedMusicClip, 0, len(output.Clips)),
+	}
+
+	for i, clip := range output.Clips {
+		originalFilename := fmt.Sprintf("lyria-generated-%d%s", i+1, extensionForMIME(clip.MIMEType))
+		storedFilename, err := BuildStoredFilename(originalFilename)
+		if err != nil {
+			return domain.MusicGenerationResponse{}, fmt.Errorf("build stored filename: %w", err)
+		}
+
+		if err := s.storage.SaveAudio(ctx, storedFilename, clip.AudioData); err != nil {
+			return domain.MusicGenerationResponse{}, fmt.Errorf("save generated audio: %w", err)
+		}
+
+		savedClip := domain.GeneratedMusicClip{
+			Filename:      storedFilename,
+			MIMEType:      clip.MIMEType,
+			FileSizeBytes: int64(len(clip.AudioData)),
+			DownloadURL:   fmt.Sprintf("/api/generated/%s", storedFilename),
+		}
+
+		vector, err := s.embedding.EmbedAudio(ctx, clip.MIMEType, clip.AudioData, originalFilename)
+		if err != nil {
+			log.Printf("skip indexing generated audio %q: %v", storedFilename, err)
+			response.Clips = append(response.Clips, savedClip)
+			continue
+		}
+
+		record, err := s.repo.InsertAudioRecord(
+			ctx,
+			originalFilename,
+			storedFilename,
+			clip.MIMEType,
+			int64(len(clip.AudioData)),
+			s.embedding.ModelName(),
+			vector,
+		)
+		if err != nil {
+			log.Printf("skip repository insert for generated audio %q: %v", storedFilename, err)
+			response.Clips = append(response.Clips, savedClip)
+			continue
+		}
+
+		savedClip.IndexedAudioID = &record.ID
+		savedClip.IndexedAudioURL = fmt.Sprintf("/api/audio/%d", record.ID)
+		response.Clips = append(response.Clips, savedClip)
+	}
+
+	return response, nil
+}
+
 // BuildStoredFilename は衝突しにくい保存用ファイル名を生成します。
 func BuildStoredFilename(original string) (string, error) {
 	random := make([]byte, 8)
@@ -176,6 +260,21 @@ func DetectMIMEType(filename string, body []byte) string {
 		}
 	}
 	return http.DetectContentType(body)
+}
+
+func extensionForMIME(mimeType string) string {
+	if mimeType != "" {
+		if exts, _ := mime.ExtensionsByType(mimeType); len(exts) > 0 {
+			return exts[0]
+		}
+	}
+
+	switch mimeType {
+	case "audio/wav", "audio/x-wav":
+		return ".wav"
+	default:
+		return ".bin"
+	}
 }
 
 func cosineSimilarity(a, b []float64) float64 {

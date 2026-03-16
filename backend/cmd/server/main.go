@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"kiria/backend/infrastructure/gemini"
 	"kiria/backend/infrastructure/sqlite"
 	"kiria/backend/infrastructure/storage"
+	"kiria/backend/infrastructure/vertexai"
 	"kiria/backend/usecase"
 )
 
@@ -32,11 +34,16 @@ func main() {
 		log.Fatal(err)
 	}
 
-	service := usecase.NewService(
-		gemini.NewClient(cfg.GeminiAPIKey, cfg.GeminiModel),
-		repo,
-		fileStore,
-	)
+	embeddingClient := gemini.NewClient(cfg.GeminiAPIKey, cfg.GeminiModel)
+	service := usecase.NewService(embeddingClient, repo, fileStore)
+
+	musicClient, err := vertexai.NewMusicClient(context.Background(), cfg.GoogleCloudProject, cfg.VertexLocation, cfg.LyriaModel)
+	if err != nil {
+		log.Printf("vertex ai music generation disabled: %v", err)
+	} else {
+		service = usecase.NewServiceWithMusic(embeddingClient, musicClient, repo, fileStore)
+		log.Printf("using Vertex AI music model %q in %q", cfg.LyriaModel, cfg.VertexLocation)
+	}
 
 	httpHandler := handler.NewHTTPHandler(service)
 	server := &http.Server{

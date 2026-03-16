@@ -14,18 +14,23 @@ const (
 	defaultAudioDir       = "audio"
 	defaultDBPath         = "kiria.db"
 	defaultEmbedModel     = "gemini-embedding-2-preview"
+	defaultVertexLocation = "us-central1"
+	defaultLyriaModel     = "lyria-002"
 	defaultMaxUploadBytes = 25 << 20
 )
 
 // Config は環境変数と `.env` から読み込んだ実行設定を表します。
 type Config struct {
-	Addr           string
-	DataDir        string
-	AudioDir       string
-	DBPath         string
-	GeminiAPIKey   string
-	GeminiModel    string
-	MaxUploadBytes int64
+	Addr               string
+	DataDir            string
+	AudioDir           string
+	DBPath             string
+	GeminiAPIKey       string
+	GeminiModel        string
+	GoogleCloudProject string
+	VertexLocation     string
+	LyriaModel         string
+	MaxUploadBytes     int64
 }
 
 // Load は `.env` と環境変数、既定値から Config を組み立てます。
@@ -39,13 +44,16 @@ func Load() Config {
 	}
 
 	return Config{
-		Addr:           addr,
-		DataDir:        dataDir,
-		AudioDir:       filepath.Join(dataDir, defaultAudioDir),
-		DBPath:         filepath.Join(dataDir, defaultDBPath),
-		GeminiAPIKey:   os.Getenv("GEMINI_API_KEY"),
-		GeminiModel:    getenv("GEMINI_EMBED_MODEL", defaultEmbedModel),
-		MaxUploadBytes: getInt64Env("MAX_UPLOAD_BYTES", defaultMaxUploadBytes),
+		Addr:               addr,
+		DataDir:            dataDir,
+		AudioDir:           filepath.Join(dataDir, defaultAudioDir),
+		DBPath:             filepath.Join(dataDir, defaultDBPath),
+		GeminiAPIKey:       os.Getenv("GEMINI_API_KEY"),
+		GeminiModel:        getenv("GEMINI_EMBED_MODEL", defaultEmbedModel),
+		GoogleCloudProject: getenv("GOOGLE_CLOUD_PROJECT", ""),
+		VertexLocation:     getenv("VERTEX_AI_LOCATION", defaultVertexLocation),
+		LyriaModel:         getenv("VERTEX_LYRIA_MODEL", defaultLyriaModel),
+		MaxUploadBytes:     getInt64Env("MAX_UPLOAD_BYTES", defaultMaxUploadBytes),
 	}
 }
 
