@@ -12,12 +12,12 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// AudioRepository stores indexed audio metadata and embeddings in SQLite.
+// AudioRepository は音声メタデータと埋め込みを SQLite に保存します。
 type AudioRepository struct {
 	db *sql.DB
 }
 
-// NewAudioRepository opens the SQLite database and runs migrations.
+// NewAudioRepository は SQLite を開き、必要なテーブルを準備します。
 func NewAudioRepository(dbPath string) (*AudioRepository, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -33,12 +33,12 @@ func NewAudioRepository(dbPath string) (*AudioRepository, error) {
 	return repo, nil
 }
 
-// Close releases the database handle.
+// Close はデータベース接続を閉じます。
 func (r *AudioRepository) Close() error {
 	return r.db.Close()
 }
 
-// InsertAudioRecord saves one audio record and its embedding vector.
+// InsertAudioRecord は音声メタデータと埋め込みベクトルを保存します。
 func (r *AudioRepository) InsertAudioRecord(ctx context.Context, originalFilename, storedFilename, mimeType string, fileSizeBytes int64, embeddingModel string, embedding []float64) (domain.AudioRecord, error) {
 	embeddingJSON, err := json.Marshal(embedding)
 	if err != nil {
@@ -79,7 +79,7 @@ func (r *AudioRepository) InsertAudioRecord(ctx context.Context, originalFilenam
 	}, nil
 }
 
-// GetAudioRecord returns one stored audio record by id.
+// GetAudioRecord はIDから音声レコードを1件取得します。
 func (r *AudioRepository) GetAudioRecord(ctx context.Context, id int64) (domain.AudioRecord, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT
@@ -114,7 +114,7 @@ func (r *AudioRepository) GetAudioRecord(ctx context.Context, id int64) (domain.
 	return record, nil
 }
 
-// ListAudioRecords loads all stored audio items and their embeddings.
+// ListAudioRecords は保存済み音声と埋め込みをすべて読み出します。
 func (r *AudioRepository) ListAudioRecords(ctx context.Context) ([]domain.StoredAudioEmbedding, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT

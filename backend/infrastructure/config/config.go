@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bufio"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,7 +17,7 @@ const (
 	defaultMaxUploadBytes = 25 << 20
 )
 
-// Config holds runtime configuration loaded from environment variables.
+// Config は環境変数と `.env` から読み込んだ実行設定を表します。
 type Config struct {
 	Addr           string
 	DataDir        string
@@ -27,8 +28,10 @@ type Config struct {
 	MaxUploadBytes int64
 }
 
-// Load builds Config from environment variables and defaults.
+// Load は `.env` と環境変数、既定値から Config を組み立てます。
 func Load() Config {
+	loadDotEnv(".env")
+
 	dataDir := getenv("DATA_DIR", defaultDataDir)
 	addr := getenv("PORT", defaultAddr)
 	if !strings.HasPrefix(addr, ":") {
@@ -43,6 +46,42 @@ func Load() Config {
 		GeminiAPIKey:   os.Getenv("GEMINI_API_KEY"),
 		GeminiModel:    getenv("GEMINI_EMBED_MODEL", defaultEmbedModel),
 		MaxUploadBytes: getInt64Env("MAX_UPLOAD_BYTES", defaultMaxUploadBytes),
+	}
+}
+
+func loadDotEnv(path string) {
+	file, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasPrefix(line, "export ") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
+		}
+
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+
+		value = strings.TrimSpace(value)
+		value = strings.Trim(value, `"'`)
+		if _, exists := os.LookupEnv(key); exists {
+			continue
+		}
+		_ = os.Setenv(key, value)
 	}
 }
 

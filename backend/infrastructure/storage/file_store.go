@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 )
 
-// FileStore stores audio files on the local filesystem.
+// FileStore は音声ファイル本体をローカルファイルシステムに保存します。
 type FileStore struct {
 	audioDir string
 }
 
-// NewFileStore creates the audio storage directory if it does not exist.
+// NewFileStore は音声保存ディレクトリを準備します。
 func NewFileStore(audioDir string) (*FileStore, error) {
 	if err := os.MkdirAll(audioDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create audio dir: %w", err)
@@ -21,12 +21,12 @@ func NewFileStore(audioDir string) (*FileStore, error) {
 	return &FileStore{audioDir: audioDir}, nil
 }
 
-// SaveAudio writes an audio file to the configured storage directory.
+// SaveAudio は音声ファイルを保存先ディレクトリへ書き込みます。
 func (s *FileStore) SaveAudio(_ context.Context, storedFilename string, audioData []byte) error {
 	return os.WriteFile(filepath.Join(s.audioDir, storedFilename), audioData, 0o644)
 }
 
-// AudioPath returns the absolute path to a stored audio file.
+// AudioPath は保存済み音声ファイルのパスを返します。
 func (s *FileStore) AudioPath(storedFilename string) string {
 	return filepath.Join(s.audioDir, storedFilename)
 }

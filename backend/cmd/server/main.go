@@ -14,7 +14,7 @@ import (
 	"kiria/backend/usecase"
 )
 
-// main starts the online text-search API server.
+// main はオンラインのテキスト検索APIサーバーを起動します。
 func main() {
 	cfg := config.Load()
 	if cfg.GeminiAPIKey == "" {

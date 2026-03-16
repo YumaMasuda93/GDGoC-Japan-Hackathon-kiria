@@ -46,14 +46,14 @@ type errorResponse struct {
 	} `json:"error"`
 }
 
-// Client calls the Gemini embeddings API.
+// Client は Gemini Embeddings API への接続を担当します。
 type Client struct {
 	apiKey     string
 	model      string
 	httpClient *http.Client
 }
 
-// NewClient constructs a Gemini API client.
+// NewClient は Gemini API クライアントを生成します。
 func NewClient(apiKey, model string) *Client {
 	return &Client{
 		apiKey: apiKey,
@@ -64,12 +64,12 @@ func NewClient(apiKey, model string) *Client {
 	}
 }
 
-// ModelName returns the configured embedding model.
+// ModelName は設定済みの埋め込みモデル名を返します。
 func (c *Client) ModelName() string {
 	return c.model
 }
 
-// EmbedText generates a query embedding for online retrieval.
+// EmbedText は検索クエリ用のテキスト埋め込みを生成します。
 func (c *Client) EmbedText(ctx context.Context, text string) ([]float64, error) {
 	req := embedRequest{
 		Model:    modelResourceName(c.model),
@@ -81,7 +81,7 @@ func (c *Client) EmbedText(ctx context.Context, text string) ([]float64, error) 
 	return c.embed(ctx, req)
 }
 
-// EmbedAudio generates an embedding for an audio document that will be indexed.
+// EmbedAudio は事前登録する音声データの埋め込みを生成します。
 func (c *Client) EmbedAudio(ctx context.Context, mimeType string, audioData []byte, title string) ([]float64, error) {
 	req := embedRequest{
 		Model:    modelResourceName(c.model),

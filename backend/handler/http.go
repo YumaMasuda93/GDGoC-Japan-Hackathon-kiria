@@ -20,17 +20,17 @@ type apiError struct {
 	Error string `json:"error"`
 }
 
-// HTTPHandler exposes the online retrieval API over HTTP.
+// HTTPHandler はオンライン検索APIを HTTP として公開します。
 type HTTPHandler struct {
 	service *usecase.Service
 }
 
-// NewHTTPHandler constructs the HTTP handler layer.
+// NewHTTPHandler は HTTP ハンドラ層を生成します。
 func NewHTTPHandler(service *usecase.Service) *HTTPHandler {
 	return &HTTPHandler{service: service}
 }
 
-// Routes builds the HTTP router for the online API.
+// Routes はオンラインAPI用のルーティングを組み立てます。
 func (h *HTTPHandler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", h.HealthHandler)
@@ -39,7 +39,7 @@ func (h *HTTPHandler) Routes() http.Handler {
 	return logRequest(mux)
 }
 
-// HealthHandler reports process health and the active embedding model.
+// HealthHandler は稼働状態と利用中モデルを返します。
 func (h *HTTPHandler) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -53,7 +53,7 @@ func (h *HTTPHandler) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// SearchTextHandler runs online text embedding plus similarity search.
+// SearchTextHandler はテキスト埋め込みと類似検索を実行します。
 func (h *HTTPHandler) SearchTextHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -87,7 +87,7 @@ func (h *HTTPHandler) SearchTextHandler(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// AudioFileHandler streams a stored audio file back to the client.
+// AudioFileHandler は保存済み音声ファイルを返します。
 func (h *HTTPHandler) AudioFileHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")

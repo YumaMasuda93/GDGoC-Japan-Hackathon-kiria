@@ -18,14 +18,14 @@ import (
 	"kiria/backend/domain"
 )
 
-// Service coordinates the application's indexing and retrieval flows.
+// Service は事前埋め込みとオンライン検索のユースケースをまとめます。
 type Service struct {
 	embedding domain.EmbeddingClient
 	repo      domain.AudioRepository
 	storage   domain.AudioStorage
 }
 
-// NewService constructs the core application usecases.
+// NewService はアプリケーションの中核ユースケースを構築します。
 func NewService(embedding domain.EmbeddingClient, repo domain.AudioRepository, storage domain.AudioStorage) *Service {
 	return &Service{
 		embedding: embedding,
@@ -34,17 +34,17 @@ func NewService(embedding domain.EmbeddingClient, repo domain.AudioRepository, s
 	}
 }
 
-// ModelName returns the active embedding model used by the service.
+// ModelName は現在利用中の埋め込みモデル名を返します。
 func (s *Service) ModelName() string {
 	return s.embedding.ModelName()
 }
 
-// Close releases repository resources.
+// Close はユースケースが利用する永続化資源を解放します。
 func (s *Service) Close() error {
 	return s.repo.Close()
 }
 
-// IndexAudioFile embeds a local audio file and stores both the file and vector.
+// IndexAudioFile はローカル音声を埋め込みしてファイルとベクトルを保存します。
 func (s *Service) IndexAudioFile(ctx context.Context, sourcePath string) (domain.IndexResult, error) {
 	audioBytes, err := os.ReadFile(sourcePath)
 	if err != nil {
@@ -94,7 +94,7 @@ func (s *Service) IndexAudioFile(ctx context.Context, sourcePath string) (domain
 	}, nil
 }
 
-// SearchByText embeds the query online and ranks stored audio by cosine similarity.
+// SearchByText はクエリをオンライン埋め込みし、近い音声を類似度順で返します。
 func (s *Service) SearchByText(ctx context.Context, text string, limit int) ([]domain.AudioRecord, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -137,7 +137,7 @@ func (s *Service) SearchByText(ctx context.Context, text string, limit int) ([]d
 	return results, nil
 }
 
-// GetAudioRecord returns one stored audio record and fills its public download URL.
+// GetAudioRecord は保存済み音声1件を取得し、公開用URLを補完します。
 func (s *Service) GetAudioRecord(ctx context.Context, id int64) (domain.AudioRecord, error) {
 	record, err := s.repo.GetAudioRecord(ctx, id)
 	if err != nil {
@@ -147,12 +147,12 @@ func (s *Service) GetAudioRecord(ctx context.Context, id int64) (domain.AudioRec
 	return record, nil
 }
 
-// AudioPath returns the absolute path of a stored audio file.
+// AudioPath は保存済み音声ファイルの実パスを返します。
 func (s *Service) AudioPath(storedFilename string) string {
 	return s.storage.AudioPath(storedFilename)
 }
 
-// BuildStoredFilename generates a collision-resistant storage filename.
+// BuildStoredFilename は衝突しにくい保存用ファイル名を生成します。
 func BuildStoredFilename(original string) (string, error) {
 	random := make([]byte, 8)
 	if _, err := rand.Read(random); err != nil {
@@ -167,7 +167,7 @@ func BuildStoredFilename(original string) (string, error) {
 	return fmt.Sprintf("%d-%s%s", time.Now().UTC().Unix(), hex.EncodeToString(random), ext), nil
 }
 
-// DetectMIMEType infers the MIME type from extension first, then content bytes.
+// DetectMIMEType は拡張子を優先し、必要なら内容から MIME type を推定します。
 func DetectMIMEType(filename string, body []byte) string {
 	ext := strings.ToLower(filepath.Ext(filename))
 	if ext != "" {

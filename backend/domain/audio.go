@@ -2,7 +2,7 @@ package domain
 
 import "time"
 
-// AudioRecord describes one indexed audio item stored in the repository.
+// AudioRecord はリポジトリに保存された音声データ1件を表します。
 type AudioRecord struct {
 	ID               int64     `json:"id"`
 	OriginalFilename string    `json:"originalFilename"`
@@ -16,26 +16,26 @@ type AudioRecord struct {
 	DownloadURL      string    `json:"downloadUrl,omitempty"`
 }
 
-// SearchRequest is the request payload for text-to-audio retrieval.
+// SearchRequest はテキストから音声を検索するリクエストです。
 type SearchRequest struct {
 	Text  string `json:"text"`
 	Limit int    `json:"limit"`
 }
 
-// SearchResponse contains ranked audio search results.
+// SearchResponse は類似度順に並んだ音声検索結果を表します。
 type SearchResponse struct {
 	Query   string        `json:"query"`
 	Results []AudioRecord `json:"results"`
 }
 
-// HealthResponse is returned by the health endpoint.
+// HealthResponse はヘルスチェックAPIのレスポンスです。
 type HealthResponse struct {
 	Status    string `json:"status"`
 	Timestamp string `json:"timestamp"`
 	Model     string `json:"model"`
 }
 
-// IndexResult summarizes one offline indexing operation.
+// IndexResult は事前埋め込み1件の結果を表します。
 type IndexResult struct {
 	ID                  int64
 	OriginalFilename    string

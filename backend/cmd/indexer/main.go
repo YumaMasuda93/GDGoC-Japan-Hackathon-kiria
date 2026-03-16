@@ -15,7 +15,7 @@ import (
 	"kiria/backend/usecase"
 )
 
-// main indexes local audio files into SQLite using Gemini audio embeddings.
+// main はローカル音声を事前埋め込みして SQLite に登録します。
 func main() {
 	if len(os.Args) < 2 {
 		log.Fatal("usage: go run ./cmd/indexer <audio-file> [<audio-file>...]")
@@ -56,7 +56,7 @@ func main() {
 	}
 }
 
-// indexFile embeds a single audio file and prints the stored record summary.
+// indexFile は音声1件を埋め込みし、登録結果をログ出力します。
 func indexFile(service *usecase.Service, path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
