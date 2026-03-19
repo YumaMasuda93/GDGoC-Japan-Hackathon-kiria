@@ -33,6 +33,7 @@ type AudioRepository interface {
 type AudioStorage interface {
 	SaveAudio(ctx context.Context, sourcePath string, audioData []byte) error
 	AudioPath(sourcePath string) string
+	IsSeedFile(originalFilename string) bool
 }
 
 // StoredAudioEmbedding は音声メタデータと保存済みベクトルを束ねた値です。
