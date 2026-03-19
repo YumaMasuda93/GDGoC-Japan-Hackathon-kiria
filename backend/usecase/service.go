@@ -28,6 +28,8 @@ type Service struct {
 	storage    domain.AudioStorage
 }
 
+const uiGeneratedSourcePathPrefix = "ui-generated-"
+
 // NewService はアプリケーションの中核ユースケースを構築します。
 func NewService(embedding domain.EmbeddingClient, repo domain.AudioRepository, storage domain.AudioStorage) *Service {
 	return &Service{
@@ -146,8 +148,8 @@ func (s *Service) SearchByText(ctx context.Context, text string, limit int) ([]d
 	results := make([]domain.AudioRecord, 0)
 	for _, item := range stored {
 		record := item.Record
-		
-		if !s.storage.IsSeedFile(record.OriginalFilename) {
+
+		if isExcludedFromSearch(record.SourcePath) {
 			continue
 		}
 
@@ -217,7 +219,7 @@ func (s *Service) GenerateMusic(ctx context.Context, req domain.MusicGenerationR
 
 	for i, clip := range output.Clips {
 		originalFilename := fmt.Sprintf("lyria-generated-%d%s", i+1, extensionForMIME(clip.MIMEType))
-		savedClip, err := s.StoreGeneratedClip(ctx, originalFilename, clip)
+		savedClip, err := s.storeGeneratedClip(ctx, originalFilename, clip, true)
 		if err != nil {
 			if savedClip.Filename == "" {
 				return domain.MusicGenerationResponse{}, err
@@ -232,6 +234,10 @@ func (s *Service) GenerateMusic(ctx context.Context, req domain.MusicGenerationR
 
 // StoreGeneratedClip は生成済み音声を保存し、埋め込みとメタデータを登録します。
 func (s *Service) StoreGeneratedClip(ctx context.Context, originalFilename string, clip domain.GeneratedAudioSample) (domain.GeneratedMusicClip, error) {
+	return s.storeGeneratedClip(ctx, originalFilename, clip, false)
+}
+
+func (s *Service) storeGeneratedClip(ctx context.Context, originalFilename string, clip domain.GeneratedAudioSample, excludeFromSearch bool) (domain.GeneratedMusicClip, error) {
 	originalFilename = strings.TrimSpace(originalFilename)
 	if originalFilename == "" {
 		originalFilename = "lyria-generated" + extensionForMIME(clip.MIMEType)
@@ -242,6 +248,9 @@ func (s *Service) StoreGeneratedClip(ctx context.Context, originalFilename strin
 	storedFilename, err := BuildStoredFilename(originalFilename)
 	if err != nil {
 		return domain.GeneratedMusicClip{}, fmt.Errorf("build stored filename: %w", err)
+	}
+	if excludeFromSearch {
+		storedFilename = uiGeneratedSourcePathPrefix + storedFilename
 	}
 
 	if err := s.storage.SaveAudio(ctx, storedFilename, clip.AudioData); err != nil {
@@ -276,6 +285,10 @@ func (s *Service) StoreGeneratedClip(ctx context.Context, originalFilename strin
 	savedClip.IndexedAudioID = &record.ID
 	savedClip.IndexedAudioURL = fmt.Sprintf("/api/audio/%d", record.ID)
 	return savedClip, nil
+}
+
+func isExcludedFromSearch(sourcePath string) bool {
+	return strings.HasPrefix(filepath.Base(sourcePath), uiGeneratedSourcePathPrefix)
 }
 
 // BuildStoredFilename は衝突しにくい保存用ファイル名を生成します。

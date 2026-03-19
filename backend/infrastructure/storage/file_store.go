@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // FileStore は音声ファイル本体をローカルファイルシステムに保存します。
@@ -44,16 +43,6 @@ func (s *FileStore) AudioPath(sourcePath string) string {
 		return filepath.Join(s.audioDir, sourcePath)
 	}
 	return candidates[len(candidates)-1]
-}
-
-// IsSeedFile は指定された元のファイル名が seed ディレクトリに存在し、かつ .wav であるかを判定します。
-func (s *FileStore) IsSeedFile(originalFilename string) bool {
-	if !strings.HasSuffix(strings.ToLower(originalFilename), ".wav") {
-		return false
-	}
-	seedPath := filepath.Join(filepath.Dir(s.audioDir), "..", "seed", originalFilename)
-	info, err := os.Stat(seedPath)
-	return err == nil && !info.IsDir()
 }
 
 func (s *FileStore) audioPathCandidates(sourcePath string) []string {

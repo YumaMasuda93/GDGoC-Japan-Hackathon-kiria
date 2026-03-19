@@ -40,6 +40,7 @@ func (stubMusicClient) ModelName() string {
 type recordingRepo struct {
 	nextID      int64
 	inserted    []domain.AudioRecord
+	listed      []domain.StoredAudioEmbedding
 	lastVector  []float64
 	lastContext context.Context
 }
@@ -65,8 +66,8 @@ func (*recordingRepo) GetAudioRecord(_ context.Context, _ int64) (domain.AudioRe
 	return domain.AudioRecord{}, nil
 }
 
-func (*recordingRepo) ListAudioRecords(_ context.Context) ([]domain.StoredAudioEmbedding, error) {
-	return nil, nil
+func (r *recordingRepo) ListAudioRecords(_ context.Context) ([]domain.StoredAudioEmbedding, error) {
+	return append([]domain.StoredAudioEmbedding(nil), r.listed...), nil
 }
 
 func (*recordingRepo) Close() error {
@@ -159,6 +160,9 @@ func TestGenerateMusicStoresRelativeIndexedPath(t *testing.T) {
 	if filepath.IsAbs(record.SourcePath) {
 		t.Fatalf("SourcePath should be relative, got %q", record.SourcePath)
 	}
+	if !strings.HasPrefix(record.SourcePath, uiGeneratedSourcePathPrefix) {
+		t.Fatalf("SourcePath = %q, want prefix %q", record.SourcePath, uiGeneratedSourcePathPrefix)
+	}
 	if len(resp.Clips) != 1 {
 		t.Fatalf("clips count = %d, want 1", len(resp.Clips))
 	}
@@ -169,5 +173,85 @@ func TestGenerateMusicStoresRelativeIndexedPath(t *testing.T) {
 	storedPath := store.AudioPath(record.SourcePath)
 	if _, err := os.Stat(storedPath); err != nil {
 		t.Fatalf("stored file missing at %q: %v", storedPath, err)
+	}
+}
+
+func TestStoreGeneratedClipKeepsSearchablePath(t *testing.T) {
+	root := t.TempDir()
+	audioDir := filepath.Join(root, "data", "audio")
+	store, err := storage.NewFileStore(audioDir)
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+
+	repo := &recordingRepo{}
+	service := NewServiceWithMusic(
+		stubEmbeddingClient{},
+		stubMusicClient{},
+		repo,
+		store,
+	)
+
+	clip, err := service.StoreGeneratedClip(context.Background(), "lyria-batch-001.wav", domain.GeneratedAudioSample{
+		MIMEType:  "audio/wav",
+		AudioData: []byte("RIFF....WAVE"),
+	})
+	if err != nil {
+		t.Fatalf("StoreGeneratedClip() error = %v", err)
+	}
+	if len(repo.inserted) != 1 {
+		t.Fatalf("inserted count = %d, want 1", len(repo.inserted))
+	}
+
+	record := repo.inserted[0]
+	if strings.HasPrefix(record.SourcePath, uiGeneratedSourcePathPrefix) {
+		t.Fatalf("SourcePath = %q, should not have UI prefix", record.SourcePath)
+	}
+	if clip.Filename != record.SourcePath {
+		t.Fatalf("clip.Filename = %q, want %q", clip.Filename, record.SourcePath)
+	}
+}
+
+func TestSearchByTextExcludesUIGeneratedAudio(t *testing.T) {
+	root := t.TempDir()
+	audioDir := filepath.Join(root, "data", "audio")
+	store, err := storage.NewFileStore(audioDir)
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+
+	repo := &recordingRepo{
+		listed: []domain.StoredAudioEmbedding{
+			{
+				Record: domain.AudioRecord{
+					ID:               1,
+					OriginalFilename: "lyria-batch-001.wav",
+					SourcePath:       "1773919036-d4279734eaa3315e.wav",
+					MIMEType:         "audio/wav",
+				},
+				Embedding: []float64{1},
+			},
+			{
+				Record: domain.AudioRecord{
+					ID:               2,
+					OriginalFilename: "lyria-generated-1.wav",
+					SourcePath:       uiGeneratedSourcePathPrefix + "1773919999-aabbccddeeff0011.wav",
+					MIMEType:         "audio/wav",
+				},
+				Embedding: []float64{1},
+			},
+		},
+	}
+	service := NewService(stubEmbeddingClient{}, repo, store)
+
+	results, err := service.SearchByText(context.Background(), "a", 5)
+	if err != nil {
+		t.Fatalf("SearchByText() error = %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("results count = %d, want 1", len(results))
+	}
+	if results[0].ID != 1 {
+		t.Fatalf("result ID = %d, want 1", results[0].ID)
 	}
 }
