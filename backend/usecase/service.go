@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"mime"
 	"net/http"
@@ -26,6 +25,7 @@ type Service struct {
 	translator domain.PromptTranslator
 	repo       domain.AudioRepository
 	storage    domain.AudioStorage
+	output     domain.AudioStorage
 }
 
 const uiGeneratedSourcePathPrefix = "ui-generated-"
@@ -36,6 +36,7 @@ func NewService(embedding domain.EmbeddingClient, repo domain.AudioRepository, s
 		embedding: embedding,
 		repo:      repo,
 		storage:   storage,
+		output:    storage,
 	}
 }
 
@@ -51,6 +52,13 @@ func NewServiceWithMusicAndTranslator(embedding domain.EmbeddingClient, music do
 	service := NewServiceWithMusic(embedding, music, repo, storage)
 	service.translator = translator
 	return service
+}
+
+// SetGeneratedOutputStorage は最終生成音楽の保存先を差し替えます。
+func (s *Service) SetGeneratedOutputStorage(storage domain.AudioStorage) {
+	if storage != nil {
+		s.output = storage
+	}
 }
 
 // ModelName は現在利用中の埋め込みモデル名を返します。
@@ -184,6 +192,11 @@ func (s *Service) AudioPath(sourcePath string) string {
 	return s.storage.AudioPath(sourcePath)
 }
 
+// GeneratedAudioPath は最終生成済み音声ファイルの実パスを返します。
+func (s *Service) GeneratedAudioPath(sourcePath string) string {
+	return s.output.AudioPath(sourcePath)
+}
+
 // GenerateMusic はプロンプトから音楽を生成して保存し、返却用メタデータを返します。
 func (s *Service) GenerateMusic(ctx context.Context, req domain.MusicGenerationRequest) (domain.MusicGenerationResponse, error) {
 	if s.music == nil {
@@ -219,12 +232,9 @@ func (s *Service) GenerateMusic(ctx context.Context, req domain.MusicGenerationR
 
 	for i, clip := range output.Clips {
 		originalFilename := fmt.Sprintf("lyria-generated-%d%s", i+1, extensionForMIME(clip.MIMEType))
-		savedClip, err := s.storeGeneratedClip(ctx, originalFilename, clip, true)
+		savedClip, err := s.storeOutputClip(ctx, originalFilename, clip)
 		if err != nil {
-			if savedClip.Filename == "" {
-				return domain.MusicGenerationResponse{}, err
-			}
-			log.Printf("skip indexing generated audio %q: %v", savedClip.Filename, err)
+			return domain.MusicGenerationResponse{}, err
 		}
 		response.Clips = append(response.Clips, savedClip)
 	}
@@ -235,6 +245,31 @@ func (s *Service) GenerateMusic(ctx context.Context, req domain.MusicGenerationR
 // StoreGeneratedClip は生成済み音声を保存し、埋め込みとメタデータを登録します。
 func (s *Service) StoreGeneratedClip(ctx context.Context, originalFilename string, clip domain.GeneratedAudioSample) (domain.GeneratedMusicClip, error) {
 	return s.storeGeneratedClip(ctx, originalFilename, clip, false)
+}
+
+func (s *Service) storeOutputClip(ctx context.Context, originalFilename string, clip domain.GeneratedAudioSample) (domain.GeneratedMusicClip, error) {
+	originalFilename = strings.TrimSpace(originalFilename)
+	if originalFilename == "" {
+		originalFilename = "lyria-generated" + extensionForMIME(clip.MIMEType)
+	} else if filepath.Ext(originalFilename) == "" {
+		originalFilename += extensionForMIME(clip.MIMEType)
+	}
+
+	storedFilename, err := BuildStoredFilename(originalFilename)
+	if err != nil {
+		return domain.GeneratedMusicClip{}, fmt.Errorf("build stored filename: %w", err)
+	}
+
+	if err := s.output.SaveAudio(ctx, storedFilename, clip.AudioData); err != nil {
+		return domain.GeneratedMusicClip{}, fmt.Errorf("save generated audio: %w", err)
+	}
+
+	return domain.GeneratedMusicClip{
+		Filename:      storedFilename,
+		MIMEType:      clip.MIMEType,
+		FileSizeBytes: int64(len(clip.AudioData)),
+		DownloadURL:   fmt.Sprintf("/api/generated/%s", storedFilename),
+	}, nil
 }
 
 func (s *Service) storeGeneratedClip(ctx context.Context, originalFilename string, clip domain.GeneratedAudioSample, excludeFromSearch bool) (domain.GeneratedMusicClip, error) {

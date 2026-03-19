@@ -126,6 +126,11 @@ func TestGenerateMusicStoresRelativeIndexedPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileStore() error = %v", err)
 	}
+	outputDir := filepath.Join(root, "output")
+	outputStore, err := storage.NewFileStore(outputDir)
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
 
 	repo := &recordingRepo{}
 	service := NewServiceWithMusic(
@@ -144,6 +149,7 @@ func TestGenerateMusicStoresRelativeIndexedPath(t *testing.T) {
 		repo,
 		store,
 	)
+	service.SetGeneratedOutputStorage(outputStore)
 
 	resp, err := service.GenerateMusic(context.Background(), domain.MusicGenerationRequest{
 		Prompt:      "test",
@@ -152,27 +158,29 @@ func TestGenerateMusicStoresRelativeIndexedPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateMusic() error = %v", err)
 	}
-	if len(repo.inserted) != 1 {
-		t.Fatalf("inserted count = %d, want 1", len(repo.inserted))
+	if len(repo.inserted) != 0 {
+		t.Fatalf("inserted count = %d, want 0", len(repo.inserted))
 	}
 
-	record := repo.inserted[0]
-	if filepath.IsAbs(record.SourcePath) {
-		t.Fatalf("SourcePath should be relative, got %q", record.SourcePath)
-	}
-	if !strings.HasPrefix(record.SourcePath, uiGeneratedSourcePathPrefix) {
-		t.Fatalf("SourcePath = %q, want prefix %q", record.SourcePath, uiGeneratedSourcePathPrefix)
+	if filepath.IsAbs(resp.Clips[0].Filename) {
+		t.Fatalf("Filename should be relative, got %q", resp.Clips[0].Filename)
 	}
 	if len(resp.Clips) != 1 {
 		t.Fatalf("clips count = %d, want 1", len(resp.Clips))
 	}
-	if got := resp.Clips[0].Filename; got != record.SourcePath {
-		t.Fatalf("resp.Clips[0].Filename = %q, want %q", got, record.SourcePath)
+	if resp.Clips[0].IndexedAudioID != nil {
+		t.Fatalf("IndexedAudioID = %v, want nil", *resp.Clips[0].IndexedAudioID)
+	}
+	if resp.Clips[0].IndexedAudioURL != "" {
+		t.Fatalf("IndexedAudioURL = %q, want empty", resp.Clips[0].IndexedAudioURL)
 	}
 
-	storedPath := store.AudioPath(record.SourcePath)
+	storedPath := outputStore.AudioPath(resp.Clips[0].Filename)
 	if _, err := os.Stat(storedPath); err != nil {
 		t.Fatalf("stored file missing at %q: %v", storedPath, err)
+	}
+	if strings.HasPrefix(storedPath, audioDir) {
+		t.Fatalf("stored path = %q, should not be under %q", storedPath, audioDir)
 	}
 }
 

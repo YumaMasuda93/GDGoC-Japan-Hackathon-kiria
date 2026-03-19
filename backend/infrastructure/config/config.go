@@ -13,6 +13,7 @@ const (
 	defaultAddr           = ":8080"
 	defaultDataDir        = "data"
 	defaultAudioDir       = "audio"
+	defaultOutputDir      = "output"
 	defaultDBPath         = "kiria.db"
 	defaultEmbedModel     = "gemini-embedding-2-preview"
 	defaultTextModel      = "gemini-2.5-flash"
@@ -26,6 +27,7 @@ type Config struct {
 	Addr               string
 	DataDir            string
 	AudioDir           string
+	OutputDir          string
 	DBPath             string
 	GeminiAPIKey       string
 	GeminiModel        string
@@ -51,6 +53,7 @@ func Load() Config {
 		Addr:               addr,
 		DataDir:            dataDir,
 		AudioDir:           filepath.Join(dataDir, defaultAudioDir),
+		OutputDir:          getenv("OUTPUT_DIR", defaultOutputDir),
 		DBPath:             filepath.Join(dataDir, defaultDBPath),
 		GeminiAPIKey:       os.Getenv("GEMINI_API_KEY"),
 		GeminiModel:        getenv("GEMINI_EMBED_MODEL", defaultEmbedModel),

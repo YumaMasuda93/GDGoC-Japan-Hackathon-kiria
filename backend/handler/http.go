@@ -148,7 +148,7 @@ func (h *HTTPHandler) GeneratedAudioFileHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	http.ServeFile(w, r, h.service.AudioPath(sourcePath))
+	http.ServeFile(w, r, h.service.GeneratedAudioPath(sourcePath))
 }
 
 // GenerateMusicHandler は Lyria による音楽生成を実行します。

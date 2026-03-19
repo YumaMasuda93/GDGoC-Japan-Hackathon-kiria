@@ -38,6 +38,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	outputStore, err := storage.NewFileStore(cfg.OutputDir)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	embeddingClient := gemini.NewClient(cfg.GeminiAPIKey, cfg.GeminiModel)
 	translator := gemini.NewTranslator(cfg.GeminiAPIKey, cfg.GeminiTextModel)
@@ -48,6 +52,7 @@ func main() {
 		log.Printf("vertex ai music generation disabled: %v", err)
 	} else {
 		service = usecase.NewServiceWithMusicAndTranslator(embeddingClient, musicClient, translator, repo, fileStore)
+		service.SetGeneratedOutputStorage(outputStore)
 		log.Printf("using Vertex AI music model %q in %q", cfg.LyriaModel, cfg.VertexLocation)
 	}
 
