@@ -85,9 +85,23 @@ func (h *HTTPHandler) SearchTextHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	items := make([]domain.SearchResultItem, 0, len(results))
+	for _, result := range results {
+		items = append(items, domain.SearchResultItem{
+			ID:               result.ID,
+			OriginalFilename: result.OriginalFilename,
+			MIMEType:         result.MIMEType,
+			FileSizeBytes:    result.FileSizeBytes,
+			EmbeddingModel:   result.EmbeddingModel,
+			EmbeddingDims:    result.EmbeddingDims,
+			SimilarityScore:  result.SimilarityScore,
+			DownloadURL:      result.DownloadURL,
+		})
+	}
+
 	writeJSON(w, http.StatusOK, domain.SearchResponse{
 		Query:   strings.TrimSpace(req.Text),
-		Results: results,
+		Results: items,
 	})
 }
 

@@ -307,6 +307,15 @@
   font-size: 1.45rem;
 }
 
+.error-banner {
+  margin: 18px 0 0;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(199, 46, 46, 0.08);
+  color: #9f1d1d;
+  line-height: 1.7;
+}
+
 .empty-state {
   display: grid;
   place-items: center;
@@ -376,6 +385,15 @@
 .timeline-card p {
   color: #535862;
   line-height: 1.7;
+}
+
+.audio-player {
+  width: 100%;
+  min-width: 0;
+}
+
+.large-player {
+  margin-top: 10px;
 }
 
 @media (max-width: 900px) {

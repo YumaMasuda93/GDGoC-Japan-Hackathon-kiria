@@ -1,29 +1,33 @@
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import "./App.css";
 
 type Question = {
   id: number;
   prompt: string;
   hint: string;
-  palette: [string, string];
 };
 
-type TrackOption = {
-  id: string;
-  title: string;
-  mood: string;
-  texture: string;
-  bpm: number;
-  description: string;
-  accent: [string, string];
-  frequency: number;
+type SearchResult = {
+  id: number;
+  originalFilename: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  embeddingModel: string;
+  embeddingDimensions: number;
+  similarityScore: number;
+  downloadUrl: string;
 };
 
-type StepResult = {
+type SearchResponse = {
+  query: string;
+  results: SearchResult[];
+};
+
+type SelectedStep = {
   questionId: number;
   prompt: string;
   answer: string;
-  selectedTrack: TrackOption;
+  selectedTrack: SearchResult;
 };
 
 const questions: Question[] = [
@@ -31,222 +35,136 @@ const questions: Question[] = [
     id: 1,
     prompt: "この曲の最初の景色を言葉で教えてください。",
     hint: "例: 深夜の高速道路、雨上がりの屋上、朝焼けの港",
-    palette: ["#ffb36b", "#f15c80"],
   },
   {
     id: 2,
     prompt: "どんな感情の揺れを入れたいですか？",
     hint: "例: 高揚と不安、静けさの中の熱、やわらかな決意",
-    palette: ["#ffd36e", "#ff7a59"],
   },
   {
     id: 3,
     prompt: "リズムやノリの方向性を自由に書いてください。",
     hint: "例: 跳ねる、まっすぐ進む、ゆっくり波打つ、足元が重い",
-    palette: ["#91eae4", "#7f7fd5"],
   },
   {
     id: 4,
     prompt: "入れたい音色や楽器の印象はありますか？",
     hint: "例: 粒立つシンセ、湿ったピアノ、荒いドラム、息の近い声",
-    palette: ["#c6ffdd", "#fbd786"],
   },
   {
     id: 5,
     prompt: "最後に、この曲が着地する瞬間を描写してください。",
     hint: "例: ふっと光が差す、余韻を残して消える、強く締める",
-    palette: ["#a18cd1", "#fbc2eb"],
   },
 ];
 
-const moods = [
-  "Neon Drift",
-  "Glass Pulse",
-  "Velvet Tide",
-  "Afterglow Rail",
-  "Static Bloom",
+const gradients: Array<[string, string]> = [
+  ["#ffaf7b", "#d76d77"],
+  ["#43cea2", "#185a9d"],
+  ["#f7971e", "#ffd200"],
+  ["#7f7fd5", "#86a8e7"],
+  ["#f953c6", "#b91d73"],
 ];
 
-const textures = [
-  "低音が広がるアンビエント層",
-  "粒の細かいアルペジオ",
-  "乾いたキックと丸いベース",
-  "霞のかかったパッド",
-  "近接したボーカルチョップ",
-];
-
-const bpmOffsets = [0, 8, -6, 12, 4];
-const freqOffsets = [0, 35, 70, 120, 170];
-
-function clampText(text: string, fallback: string) {
-  const trimmed = text.trim();
-  return trimmed.length > 0 ? trimmed : fallback;
-}
-
-function buildOptions(question: Question, answer: string): TrackOption[] {
-  const seed = clampText(answer, "untitled scene");
-  const baseBpm = 82 + (seed.length % 24);
-  const baseFrequency = 180 + question.id * 22;
-
-  return Array.from({ length: 5 }, (_, index) => ({
-    id: `${question.id}-${index + 1}`,
-    title: `${moods[index]} ${question.id}`,
-    mood: `${seed.slice(0, 20)}${seed.length > 20 ? "..." : ""}`,
-    texture: textures[(index + question.id) % textures.length],
-    bpm: Math.max(68, baseBpm + bpmOffsets[index]),
-    description: `${seed} をもとにした第${question.id}案。${index + 1}番目は ${textures[index]} を前面に出したラフです。`,
-    accent: [
-      question.palette[index % 2],
-      index % 2 === 0 ? "#101522" : question.palette[(index + 1) % 2],
-    ],
-    frequency: baseFrequency + freqOffsets[index],
-  }));
-}
-
-function buildFinalSummary(results: StepResult[]) {
-  const selectedTitles = results.map((item) => item.selectedTrack.title).join(" / ");
-  const story = results.map((item) => item.answer).join(" -> ");
+function buildTrackCopy(track: SearchResult) {
+  const name = track.originalFilename.replace(/\.[^.]+$/, "");
+  const descriptor =
+    track.similarityScore >= 0.9
+      ? "かなり近い"
+      : track.similarityScore >= 0.8
+        ? "近い"
+        : "方向性が近い";
 
   return {
-    title: `KIRIA Suite ${results.length.toString().padStart(2, "0")}`,
-    subtitle: selectedTitles,
-    description: `5つの回答と選択されたトラックを重ね、${story} という流れを持つ共同制作曲として完成しました。`,
+    title: name,
+    summary: `${descriptor}候補 / 類似度 ${(track.similarityScore * 100).toFixed(1)}%`,
+    texture: `${track.mimeType} / ${(track.fileSizeBytes / 1024).toFixed(1)} KB`,
   };
+}
+
+function buildFinalText(steps: SelectedStep[]) {
+  return steps.map((step) => step.answer).join(" -> ");
 }
 
 export default function App() {
   const [phase, setPhase] = useState<"intro" | "question" | "complete">("intro");
   const [stepIndex, setStepIndex] = useState(0);
   const [answer, setAnswer] = useState("");
-  const [options, setOptions] = useState<TrackOption[]>([]);
-  const [results, setResults] = useState<StepResult[]>([]);
-  const [playingId, setPlayingId] = useState<string | null>(null);
-  const audioRef = useRef<AudioContext | null>(null);
-  const oscillatorsRef = useRef<OscillatorNode[]>([]);
-  const gainRef = useRef<GainNode | null>(null);
+  const [results, setResults] = useState<SelectedStep[]>([]);
+  const [candidates, setCandidates] = useState<SearchResult[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const currentQuestion = questions[stepIndex];
-  const finalSummary = buildFinalSummary(results);
-
-  useEffect(() => {
-    return () => {
-      stopPreview();
-      void audioRef.current?.close();
-    };
-  }, []);
-
-  function ensureAudioContext() {
-    if (!audioRef.current) {
-      audioRef.current = new window.AudioContext();
-    }
-
-    if (!gainRef.current) {
-      gainRef.current = audioRef.current.createGain();
-      gainRef.current.gain.value = 0.08;
-      gainRef.current.connect(audioRef.current.destination);
-    }
-
-    return audioRef.current;
-  }
-
-  function stopPreview() {
-    for (const oscillator of oscillatorsRef.current) {
-      try {
-        oscillator.stop();
-      } catch {
-        // no-op
-      }
-      oscillator.disconnect();
-    }
-    oscillatorsRef.current = [];
-    setPlayingId(null);
-  }
-
-  async function handlePreview(track: TrackOption) {
-    if (playingId === track.id) {
-      stopPreview();
-      return;
-    }
-
-    stopPreview();
-
-    const context = ensureAudioContext();
-    await context.resume();
-
-    const gain = gainRef.current;
-    if (!gain) {
-      return;
-    }
-
-    const now = context.currentTime;
-    const oscillators = [0, 4, 7].map((offset, index) => {
-      const oscillator = context.createOscillator();
-      const toneGain = context.createGain();
-
-      oscillator.type = index === 0 ? "sine" : index === 1 ? "triangle" : "sawtooth";
-      oscillator.frequency.setValueAtTime(track.frequency + offset * 12, now);
-
-      toneGain.gain.setValueAtTime(0.0001, now);
-      toneGain.gain.exponentialRampToValueAtTime(0.05 / (index + 1), now + 0.08);
-      toneGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);
-
-      oscillator.connect(toneGain);
-      toneGain.connect(gain);
-      oscillator.start(now);
-      oscillator.stop(now + 1.82);
-      oscillator.onended = () => {
-        oscillator.disconnect();
-        toneGain.disconnect();
-      };
-
-      return oscillator;
-    });
-
-    oscillatorsRef.current = oscillators;
-    setPlayingId(track.id);
-
-    window.setTimeout(() => {
-      setPlayingId((current) => (current === track.id ? null : current));
-    }, 1850);
-  }
+  const finalText = useMemo(() => buildFinalText(results), [results]);
+  const finalTrack = results.length > 0 ? results[results.length - 1].selectedTrack : null;
 
   function handleStart() {
     setPhase("question");
     setStepIndex(0);
-    setResults([]);
-    setOptions([]);
     setAnswer("");
+    setResults([]);
+    setCandidates([]);
+    setError("");
   }
 
-  function handleGenerateOptions() {
+  async function handleSearch() {
+    if (!currentQuestion || answer.trim().length === 0) {
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+    setCandidates([]);
+
+    try {
+      const response = await fetch("/api/search/text", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: answer.trim(),
+          limit: 5,
+        }),
+      });
+
+      const body = (await response.json()) as SearchResponse | { error?: string };
+      if (!response.ok) {
+        throw new Error("error" in body && body.error ? body.error : "検索に失敗しました");
+      }
+
+      const nextCandidates = "results" in body ? body.results : [];
+      setCandidates(nextCandidates);
+      if (nextCandidates.length === 0) {
+        setError("一致する音声候補が見つかりませんでした。別の表現で試してください。");
+      }
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "検索に失敗しました");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function handleSelect(track: SearchResult) {
     if (!currentQuestion) {
       return;
     }
 
-    const nextOptions = buildOptions(currentQuestion, answer);
-    setOptions(nextOptions);
-    stopPreview();
-  }
-
-  function handleSelect(track: TrackOption) {
-    if (!currentQuestion) {
-      return;
-    }
-
-    const nextResults = [
+    const next = [
       ...results,
       {
         questionId: currentQuestion.id,
         prompt: currentQuestion.prompt,
-        answer: clampText(answer, currentQuestion.hint),
+        answer: answer.trim(),
         selectedTrack: track,
       },
     ];
 
-    stopPreview();
-    setResults(nextResults);
+    setResults(next);
     setAnswer("");
-    setOptions([]);
+    setCandidates([]);
+    setError("");
 
     if (stepIndex === questions.length - 1) {
       setPhase("complete");
@@ -257,12 +175,12 @@ export default function App() {
   }
 
   function handleRestart() {
-    stopPreview();
     setPhase("intro");
     setStepIndex(0);
     setAnswer("");
-    setOptions([]);
     setResults([]);
+    setCandidates([]);
+    setError("");
   }
 
   return (
@@ -274,8 +192,8 @@ export default function App() {
         <p className="eyebrow">Co-Creation Music Generator</p>
         <h1>音楽共同制作生成アプリ</h1>
         <p className="lead">
-          言葉で世界観を育て、各ステップで5つのトラック案を試聴しながら、
-          最終的な1曲を一緒に組み上げていく体験です。
+          フロントで自由記述を送り、バックエンドの音声埋め込み検索から返ってきた候補を再生しながら、
+          5段階で曲の方向性を固めていくフローです。
         </p>
 
         {phase === "intro" ? (
@@ -327,10 +245,10 @@ export default function App() {
             <div className="question-actions">
               <button
                 className="primary-button"
-                onClick={handleGenerateOptions}
-                disabled={answer.trim().length === 0}
+                onClick={() => void handleSearch()}
+                disabled={answer.trim().length === 0 || isLoading}
               >
-                回答からトラック案を生成
+                {isLoading ? "検索中..." : "候補を取得"}
               </button>
             </div>
           </div>
@@ -338,61 +256,65 @@ export default function App() {
           <div className="tracks-panel">
             <div className="tracks-header">
               <h2>トラック候補</h2>
-              <p>デモ再生で雰囲気を確認し、1つ選択してください。</p>
+              <p>バックエンドが返した類似音声を再生し、次の質問へ進む1件を選んでください。</p>
             </div>
 
+            {error ? <p className="error-banner">{error}</p> : null}
+
             <div className="track-grid">
-              {options.length === 0 ? (
+              {candidates.length === 0 ? (
                 <div className="empty-state">
-                  <p>回答を入力して「回答からトラック案を生成」を押すと、5つの候補が表示されます。</p>
+                  <p>回答を送信すると、類似度が近い音声候補を最大5件表示します。</p>
                 </div>
               ) : (
-                options.map((track) => (
-                  <article key={track.id} className="track-card">
-                    <div
-                      className="track-image"
-                      style={{
-                        background: `linear-gradient(135deg, ${track.accent[0]}, ${track.accent[1]})`,
-                      }}
-                    >
-                      <span>{track.title}</span>
-                    </div>
+                candidates.map((track, index) => {
+                  const copy = buildTrackCopy(track);
+                  const gradient = gradients[index % gradients.length];
 
-                    <div className="track-content">
-                      <div className="track-copy">
-                        <h3>{track.title}</h3>
-                        <p className="track-mood">{track.mood}</p>
-                        <p className="track-description">{track.description}</p>
+                  return (
+                    <article key={`${track.id}-${index}`} className="track-card">
+                      <div
+                        className="track-image"
+                        style={{
+                          background: `linear-gradient(135deg, ${gradient[0]}, ${gradient[1]})`,
+                        }}
+                      >
+                        <span>{copy.title}</span>
                       </div>
 
-                      <dl className="track-specs">
-                        <div>
-                          <dt>BPM</dt>
-                          <dd>{track.bpm}</dd>
+                      <div className="track-content">
+                        <div className="track-copy">
+                          <h3>{copy.title}</h3>
+                          <p className="track-mood">{copy.summary}</p>
+                          <p className="track-description">
+                            埋め込みモデル: {track.embeddingModel}
+                          </p>
                         </div>
-                        <div>
-                          <dt>Texture</dt>
-                          <dd>{track.texture}</dd>
-                        </div>
-                      </dl>
 
-                      <div className="track-actions">
-                        <button
-                          className="secondary-button"
-                          onClick={() => void handlePreview(track)}
-                        >
-                          {playingId === track.id ? "停止" : "デモ再生"}
-                        </button>
-                        <button
-                          className="primary-button"
-                          onClick={() => handleSelect(track)}
-                        >
-                          この案を選択
-                        </button>
+                        <dl className="track-specs">
+                          <div>
+                            <dt>File</dt>
+                            <dd>{copy.texture}</dd>
+                          </div>
+                          <div>
+                            <dt>Vector</dt>
+                            <dd>{track.embeddingDimensions} dims</dd>
+                          </div>
+                        </dl>
+
+                        <audio className="audio-player" controls preload="none" src={track.downloadUrl}>
+                          お使いのブラウザは audio 要素に対応していません。
+                        </audio>
+
+                        <div className="track-actions">
+                          <button className="primary-button" onClick={() => handleSelect(track)}>
+                            この案を選択
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                ))
+                    </article>
+                  );
+                })
               )}
             </div>
           </div>
@@ -403,34 +325,24 @@ export default function App() {
         <section className="final-panel">
           <div className="final-hero">
             <p className="eyebrow">Final Output</p>
-            <h2>{finalSummary.title}</h2>
-            <p className="lead">{finalSummary.description}</p>
+            <h2>最終生成された音楽</h2>
+            <p className="lead">
+              5つの質問を経て選ばれた候補をもとに、最終案として次の音声を採用します。
+            </p>
           </div>
 
-          <div className="final-track">
-            <div className="final-art" />
-            <div className="final-copy">
-              <h3>最終生成された音楽</h3>
-              <p>{finalSummary.subtitle}</p>
-              <button
-                className="primary-button"
-                onClick={() =>
-                  void handlePreview({
-                    id: "final-preview",
-                    title: finalSummary.title,
-                    mood: "final",
-                    texture: "選択された5案の統合プレビュー",
-                    bpm: 108,
-                    description: finalSummary.description,
-                    accent: ["#ff9966", "#ff5e62"],
-                    frequency: 240,
-                  })
-                }
-              >
-                {playingId === "final-preview" ? "停止" : "最終曲をデモ再生"}
-              </button>
+          {finalTrack ? (
+            <div className="final-track">
+              <div className="final-art" />
+              <div className="final-copy">
+                <h3>{finalTrack.originalFilename}</h3>
+                <p>{finalText}</p>
+                <audio className="audio-player large-player" controls preload="none" src={finalTrack.downloadUrl}>
+                  お使いのブラウザは audio 要素に対応していません。
+                </audio>
+              </div>
             </div>
-          </div>
+          ) : null}
 
           <div className="timeline">
             {results.map((item) => (
@@ -438,7 +350,7 @@ export default function App() {
                 <span>STEP {item.questionId}</span>
                 <h3>{item.prompt}</h3>
                 <p>{item.answer}</p>
-                <strong>{item.selectedTrack.title}</strong>
+                <strong>{item.selectedTrack.originalFilename}</strong>
               </article>
             ))}
           </div>
