@@ -217,50 +217,65 @@ func (s *Service) GenerateMusic(ctx context.Context, req domain.MusicGenerationR
 
 	for i, clip := range output.Clips {
 		originalFilename := fmt.Sprintf("lyria-generated-%d%s", i+1, extensionForMIME(clip.MIMEType))
-		storedFilename, err := BuildStoredFilename(originalFilename)
+		savedClip, err := s.StoreGeneratedClip(ctx, originalFilename, clip)
 		if err != nil {
-			return domain.MusicGenerationResponse{}, fmt.Errorf("build stored filename: %w", err)
+			if savedClip.Filename == "" {
+				return domain.MusicGenerationResponse{}, err
+			}
+			log.Printf("skip indexing generated audio %q: %v", savedClip.Filename, err)
 		}
-
-		if err := s.storage.SaveAudio(ctx, storedFilename, clip.AudioData); err != nil {
-			return domain.MusicGenerationResponse{}, fmt.Errorf("save generated audio: %w", err)
-		}
-
-		savedClip := domain.GeneratedMusicClip{
-			Filename:      storedFilename,
-			MIMEType:      clip.MIMEType,
-			FileSizeBytes: int64(len(clip.AudioData)),
-			DownloadURL:   fmt.Sprintf("/api/generated/%s", storedFilename),
-		}
-
-		vector, err := s.embedding.EmbedAudio(ctx, clip.MIMEType, clip.AudioData, originalFilename)
-		if err != nil {
-			log.Printf("skip indexing generated audio %q: %v", storedFilename, err)
-			response.Clips = append(response.Clips, savedClip)
-			continue
-		}
-
-		record, err := s.repo.InsertAudioRecord(
-			ctx,
-			originalFilename,
-			storedFilename,
-			clip.MIMEType,
-			int64(len(clip.AudioData)),
-			s.embedding.ModelName(),
-			vector,
-		)
-		if err != nil {
-			log.Printf("skip repository insert for generated audio %q: %v", storedFilename, err)
-			response.Clips = append(response.Clips, savedClip)
-			continue
-		}
-
-		savedClip.IndexedAudioID = &record.ID
-		savedClip.IndexedAudioURL = fmt.Sprintf("/api/audio/%d", record.ID)
 		response.Clips = append(response.Clips, savedClip)
 	}
 
 	return response, nil
+}
+
+// StoreGeneratedClip は生成済み音声を保存し、埋め込みとメタデータを登録します。
+func (s *Service) StoreGeneratedClip(ctx context.Context, originalFilename string, clip domain.GeneratedAudioSample) (domain.GeneratedMusicClip, error) {
+	originalFilename = strings.TrimSpace(originalFilename)
+	if originalFilename == "" {
+		originalFilename = "lyria-generated" + extensionForMIME(clip.MIMEType)
+	} else if filepath.Ext(originalFilename) == "" {
+		originalFilename += extensionForMIME(clip.MIMEType)
+	}
+
+	storedFilename, err := BuildStoredFilename(originalFilename)
+	if err != nil {
+		return domain.GeneratedMusicClip{}, fmt.Errorf("build stored filename: %w", err)
+	}
+
+	if err := s.storage.SaveAudio(ctx, storedFilename, clip.AudioData); err != nil {
+		return domain.GeneratedMusicClip{}, fmt.Errorf("save generated audio: %w", err)
+	}
+
+	savedClip := domain.GeneratedMusicClip{
+		Filename:      storedFilename,
+		MIMEType:      clip.MIMEType,
+		FileSizeBytes: int64(len(clip.AudioData)),
+		DownloadURL:   fmt.Sprintf("/api/generated/%s", storedFilename),
+	}
+
+	vector, err := s.embedding.EmbedAudio(ctx, clip.MIMEType, clip.AudioData, originalFilename)
+	if err != nil {
+		return savedClip, fmt.Errorf("embed generated audio: %w", err)
+	}
+
+	record, err := s.repo.InsertAudioRecord(
+		ctx,
+		originalFilename,
+		storedFilename,
+		clip.MIMEType,
+		int64(len(clip.AudioData)),
+		s.embedding.ModelName(),
+		vector,
+	)
+	if err != nil {
+		return savedClip, fmt.Errorf("store generated audio record: %w", err)
+	}
+
+	savedClip.IndexedAudioID = &record.ID
+	savedClip.IndexedAudioURL = fmt.Sprintf("/api/audio/%d", record.ID)
+	return savedClip, nil
 }
 
 // BuildStoredFilename は衝突しにくい保存用ファイル名を生成します。

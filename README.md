@@ -47,6 +47,28 @@ go run cmd/server/main.go
 
 レスポンスには保存済み WAV の URL (`/api/generated/...`) が返ります。埋め込み生成にも成功した場合は検索用の `/api/audio/{id}` も返ります。
 
+100 曲まとめて生成したい場合は、`backend` 配下で次を実行します。
+
+```bash
+cd backend
+go run ./cmd/lyriabatch
+```
+
+この CLI は以下の流れで動きます。
+
+- プロンプトは Gemini `gemini-2.5-flash` API で 10 件ずつ生成
+- 音楽は Vertex AI の `lyria-002` で既定 10 並列で生成
+- 音声ファイルは `backend/data/audio` に保存
+- 生成した音声は Gemini `gemini-embedding-2-preview` で埋め込み化し、`backend/data/kiria.db` に保存
+- 生成に使ったタイトル、プロンプト、保存先は `backend/data/lyria-batch-<timestamp>.json` に保存
+
+必要なら件数、プロンプト生成バッチサイズ、並列数を変更できます。
+
+```bash
+cd backend
+go run ./cmd/lyriabatch -count 100 -prompt-batch-size 10 -parallel 10
+```
+
 ### 3. フロントエンドを起動する
 
 別ターミナルで:
