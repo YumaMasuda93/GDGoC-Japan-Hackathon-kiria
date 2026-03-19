@@ -48,6 +48,12 @@ type SelectedStep = {
   selectedTrack: SearchResult;
 };
 
+type QuestionDraft = {
+  answer: string;
+  candidates: SearchResult[];
+  selectedTrackId: number | null;
+};
+
 const questions: Question[] = [
   {
     id: 1,
@@ -104,40 +110,51 @@ function buildFinalPrompt(steps: SelectedStep[]) {
   return steps.map((step) => step.answer).join(" -> ");
 }
 
+function createQuestionDrafts() {
+  return questions.map<QuestionDraft>(() => ({
+    answer: "",
+    candidates: [],
+    selectedTrackId: null,
+  }));
+}
+
 export default function App() {
   const [phase, setPhase] = useState<"intro" | "question" | "generating" | "complete">("intro");
   const [stepIndex, setStepIndex] = useState(0);
-  const [answer, setAnswer] = useState("");
+  const [drafts, setDrafts] = useState<QuestionDraft[]>(() => createQuestionDrafts());
   const [results, setResults] = useState<SelectedStep[]>([]);
-  const [candidates, setCandidates] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [generatedMusic, setGeneratedMusic] = useState<MusicGenerationResponse | null>(null);
   const [generationError, setGenerationError] = useState("");
 
   const currentQuestion = questions[stepIndex];
+  const currentDraft = drafts[stepIndex] ?? { answer: "", candidates: [], selectedTrackId: null };
   const finalPrompt = useMemo(() => buildFinalPrompt(results), [results]);
   const finalTrack = generatedMusic && generatedMusic.clips.length > 0 ? generatedMusic.clips[0] : null;
 
   function handleStart() {
     setPhase("question");
     setStepIndex(0);
-    setAnswer("");
+    setDrafts(createQuestionDrafts());
     setResults([]);
-    setCandidates([]);
     setSearchError("");
     setGeneratedMusic(null);
     setGenerationError("");
   }
 
   async function handleSearch() {
-    if (!currentQuestion || answer.trim().length === 0) {
+    if (!currentQuestion || currentDraft.answer.trim().length === 0) {
       return;
     }
 
     setIsSearching(true);
     setSearchError("");
-    setCandidates([]);
+    setDrafts((current) =>
+      current.map((draft, index) =>
+        index === stepIndex ? { ...draft, candidates: [], selectedTrackId: null } : draft,
+      ),
+    );
 
     try {
       const response = await fetch("/api/search/text", {
@@ -146,7 +163,7 @@ export default function App() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          text: answer.trim(),
+          text: currentDraft.answer.trim(),
           limit: 5,
         }),
       });
@@ -157,7 +174,11 @@ export default function App() {
       }
 
       const nextCandidates = "results" in body ? body.results : [];
-      setCandidates(nextCandidates);
+      setDrafts((current) =>
+        current.map((draft, index) =>
+          index === stepIndex ? { ...draft, candidates: nextCandidates } : draft,
+        ),
+      );
       if (nextCandidates.length === 0) {
         setSearchError("一致する音声候補が見つかりませんでした。別の表現で試してください。");
       }
@@ -169,24 +190,28 @@ export default function App() {
   }
 
   async function handleSelect(track: SearchResult) {
-    if (!currentQuestion) {
+    if (!currentQuestion || currentDraft.answer.trim().length === 0) {
       return;
     }
 
+    const trimmedAnswer = currentDraft.answer.trim();
     const nextResults = [
-      ...results,
+      ...results.slice(0, stepIndex),
       {
         questionId: currentQuestion.id,
         prompt: currentQuestion.prompt,
-        answer: answer.trim(),
+        answer: trimmedAnswer,
         selectedTrack: track,
       },
     ];
 
     setResults(nextResults);
-    setAnswer("");
-    setCandidates([]);
     setSearchError("");
+    setDrafts((current) =>
+      current.map((draft, index) =>
+        index === stepIndex ? { ...draft, answer: trimmedAnswer, selectedTrackId: track.id } : draft,
+      ),
+    );
 
     if (stepIndex < questions.length - 1) {
       setStepIndex((current) => current + 1);
@@ -228,12 +253,22 @@ export default function App() {
     }
   }
 
+  function handleBack() {
+    if (stepIndex === 0) {
+      return;
+    }
+
+    const previousIndex = stepIndex - 1;
+    setStepIndex(previousIndex);
+    setResults((current) => current.slice(0, previousIndex));
+    setSearchError("");
+  }
+
   function handleRestart() {
     setPhase("intro");
     setStepIndex(0);
-    setAnswer("");
+    setDrafts(createQuestionDrafts());
     setResults([]);
-    setCandidates([]);
     setSearchError("");
     setGeneratedMusic(null);
     setGenerationError("");
@@ -290,18 +325,39 @@ export default function App() {
             <label className="input-area">
               <span>自由記述</span>
               <textarea
-                value={answer}
-                onChange={(event) => setAnswer(event.target.value)}
+                value={currentDraft.answer}
+                onChange={(event) => {
+                  const nextAnswer = event.target.value;
+                  setDrafts((current) =>
+                    current.map((draft, index) =>
+                      index === stepIndex
+                        ? {
+                            ...draft,
+                            answer: nextAnswer,
+                            candidates: nextAnswer === draft.answer ? draft.candidates : [],
+                            selectedTrackId:
+                              nextAnswer === draft.answer ? draft.selectedTrackId : null,
+                          }
+                        : draft,
+                    ),
+                  );
+                  setSearchError("");
+                }}
                 placeholder={currentQuestion.hint}
                 rows={5}
               />
             </label>
 
             <div className="question-actions">
+              {stepIndex > 0 ? (
+                <button className="secondary-button" onClick={handleBack} disabled={isSearching}>
+                  前の質問へ
+                </button>
+              ) : null}
               <button
                 className="primary-button"
                 onClick={() => void handleSearch()}
-                disabled={answer.trim().length === 0 || isSearching}
+                disabled={currentDraft.answer.trim().length === 0 || isSearching}
               >
                 {isSearching ? "検索中..." : "候補を取得"}
               </button>
@@ -317,17 +373,21 @@ export default function App() {
             {searchError ? <p className="error-banner">{searchError}</p> : null}
 
             <div className="track-grid">
-              {candidates.length === 0 ? (
+              {currentDraft.candidates.length === 0 ? (
                 <div className="empty-state">
                   <p>回答を送信すると、類似度が近い音声候補を最大5件表示します。</p>
                 </div>
               ) : (
-                candidates.map((track, index) => {
+                currentDraft.candidates.map((track, index) => {
                   const copy = buildTrackCopy(track);
                   const gradient = gradients[index % gradients.length];
+                  const isSelected = currentDraft.selectedTrackId === track.id;
 
                   return (
-                    <article key={`${track.id}-${index}`} className="track-card">
+                    <article
+                      key={`${track.id}-${index}`}
+                      className={`track-card${isSelected ? " track-card-selected" : ""}`}
+                    >
                       <div
                         className="track-image"
                         style={{
@@ -363,7 +423,7 @@ export default function App() {
 
                         <div className="track-actions">
                           <button className="primary-button" onClick={() => void handleSelect(track)}>
-                            この案を選択
+                            {isSelected ? "この案で進む" : "この案を選択"}
                           </button>
                         </div>
                       </div>
