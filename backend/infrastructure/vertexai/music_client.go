@@ -37,8 +37,10 @@ type predictParameters struct {
 
 type predictResponse struct {
 	Predictions []struct {
-		AudioContent string `json:"audioContent"`
-		MIMEType     string `json:"mimeType"`
+		AudioContent       string `json:"audioContent"`
+		BytesBase64Encoded string `json:"bytesBase64Encoded"`
+		Audio              string `json:"audio"`
+		MIMEType           string `json:"mimeType"`
 	} `json:"predictions"`
 	Model        string `json:"model"`
 	ModelDisplay string `json:"modelDisplayName"`
@@ -184,7 +186,18 @@ func (c *Client) GenerateMusic(ctx context.Context, req domain.MusicGenerationRe
 	}
 
 	for _, prediction := range predictResp.Predictions {
-		audioData, err := base64.StdEncoding.DecodeString(prediction.AudioContent)
+		var encodedAudio string
+		if prediction.AudioContent != "" {
+			encodedAudio = prediction.AudioContent
+		} else if prediction.BytesBase64Encoded != "" {
+			encodedAudio = prediction.BytesBase64Encoded
+		} else if prediction.Audio != "" {
+			encodedAudio = prediction.Audio
+		} else {
+			return domain.MusicGenerationOutput{}, errors.New("missing audio content in prediction")
+		}
+
+		audioData, err := base64.StdEncoding.DecodeString(encodedAudio)
 		if err != nil {
 			return domain.MusicGenerationOutput{}, fmt.Errorf("decode audio content: %w", err)
 		}
