@@ -26,6 +26,8 @@ cd backend
 go run cmd/server/main.go
 ```
 
+ルートで `make dev` を実行すると、フロントエンドとバックエンドを同時に起動できます。
+
 `http://localhost:8080/api/health` で API を確認できます。
 
 音楽生成も使う場合は、加えて以下を設定してください。
