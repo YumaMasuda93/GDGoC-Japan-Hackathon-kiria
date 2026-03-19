@@ -118,7 +118,7 @@ func (h *HTTPHandler) AudioFileHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", record.MIMEType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", record.OriginalFilename))
-	http.ServeFile(w, r, h.service.AudioPath(record.StoredFilename))
+	http.ServeFile(w, r, h.service.AudioPath(record.SourcePath))
 }
 
 // GeneratedAudioFileHandler は生成済み音声ファイルをファイル名で返します。
@@ -128,13 +128,13 @@ func (h *HTTPHandler) GeneratedAudioFileHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	storedFilename := strings.TrimPrefix(r.URL.Path, "/api/generated/")
-	if storedFilename == "" || storedFilename != path.Base(storedFilename) || storedFilename == "." {
+	sourcePath := strings.TrimPrefix(r.URL.Path, "/api/generated/")
+	if sourcePath == "" || sourcePath != path.Base(sourcePath) || sourcePath == "." {
 		writeError(w, http.StatusBadRequest, "invalid generated audio filename")
 		return
 	}
 
-	http.ServeFile(w, r, h.service.AudioPath(storedFilename))
+	http.ServeFile(w, r, h.service.AudioPath(sourcePath))
 }
 
 // GenerateMusicHandler は Lyria による音楽生成を実行します。

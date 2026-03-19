@@ -22,11 +22,18 @@ func NewFileStore(audioDir string) (*FileStore, error) {
 }
 
 // SaveAudio は音声ファイルを保存先ディレクトリへ書き込みます。
-func (s *FileStore) SaveAudio(_ context.Context, storedFilename string, audioData []byte) error {
-	return os.WriteFile(filepath.Join(s.audioDir, storedFilename), audioData, 0o644)
+func (s *FileStore) SaveAudio(_ context.Context, sourcePath string, audioData []byte) error {
+	targetPath := sourcePath
+	if !filepath.IsAbs(targetPath) {
+		targetPath = filepath.Join(s.audioDir, targetPath)
+	}
+	return os.WriteFile(targetPath, audioData, 0o644)
 }
 
 // AudioPath は保存済み音声ファイルのパスを返します。
-func (s *FileStore) AudioPath(storedFilename string) string {
-	return filepath.Join(s.audioDir, storedFilename)
+func (s *FileStore) AudioPath(sourcePath string) string {
+	if filepath.IsAbs(sourcePath) {
+		return sourcePath
+	}
+	return filepath.Join(s.audioDir, sourcePath)
 }

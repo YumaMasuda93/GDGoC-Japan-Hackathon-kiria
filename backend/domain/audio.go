@@ -6,7 +6,7 @@ import "time"
 type AudioRecord struct {
 	ID               int64     `json:"id"`
 	OriginalFilename string    `json:"originalFilename"`
-	StoredFilename   string    `json:"storedFilename"`
+	SourcePath       string    `json:"sourcePath"`
 	MIMEType         string    `json:"mimeType"`
 	FileSizeBytes    int64     `json:"fileSizeBytes"`
 	EmbeddingModel   string    `json:"embeddingModel"`
@@ -80,7 +80,7 @@ type HealthResponse struct {
 type IndexResult struct {
 	ID                  int64
 	OriginalFilename    string
-	StoredFilename      string
+	SourcePath          string
 	MIMEType            string
 	FileSizeBytes       int64
 	EmbeddingDimensions int

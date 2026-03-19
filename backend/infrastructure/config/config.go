@@ -2,6 +2,7 @@ package config
 
 import (
 	"bufio"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -35,7 +36,7 @@ type Config struct {
 
 // Load は `.env` と環境変数、既定値から Config を組み立てます。
 func Load() Config {
-	loadDotEnv(".env")
+	loadRuntimeEnv()
 
 	dataDir := getenv("DATA_DIR", defaultDataDir)
 	addr := getenv("PORT", defaultAddr)
@@ -54,6 +55,23 @@ func Load() Config {
 		VertexLocation:     getenv("VERTEX_AI_LOCATION", defaultVertexLocation),
 		LyriaModel:         getenv("VERTEX_LYRIA_MODEL", defaultLyriaModel),
 		MaxUploadBytes:     getInt64Env("MAX_UPLOAD_BYTES", defaultMaxUploadBytes),
+	}
+}
+
+func loadRuntimeEnv() {
+	candidates := []string{
+		".env",
+		filepath.Join(executableDir(), ".env"),
+	}
+
+	loaded := make(map[string]struct{})
+	for _, candidate := range candidates {
+		cleaned := filepath.Clean(candidate)
+		if _, seen := loaded[cleaned]; seen {
+			continue
+		}
+		loaded[cleaned] = struct{}{}
+		loadDotEnv(cleaned)
 	}
 }
 
@@ -91,6 +109,27 @@ func loadDotEnv(path string) {
 		}
 		_ = os.Setenv(key, value)
 	}
+}
+
+func executableDir() string {
+	executablePath, err := os.Executable()
+	if err != nil {
+		return "."
+	}
+
+	dir := filepath.Dir(executablePath)
+	if dir == "" {
+		return "."
+	}
+
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return dir
+	}
+	if resolved == "" {
+		return dir
+	}
+	return resolved
 }
 
 func getenv(key, fallback string) string {

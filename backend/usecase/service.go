@@ -61,7 +61,7 @@ func (s *Service) Close() error {
 	return s.repo.Close()
 }
 
-// IndexAudioFile はローカル音声を埋め込みしてファイルとベクトルを保存します。
+// IndexAudioFile はローカル音声を埋め込みし、元ファイル参照とベクトルを保存します。
 func (s *Service) IndexAudioFile(ctx context.Context, sourcePath string) (domain.IndexResult, error) {
 	audioBytes, err := os.ReadFile(sourcePath)
 	if err != nil {
@@ -79,19 +79,15 @@ func (s *Service) IndexAudioFile(ctx context.Context, sourcePath string) (domain
 		return domain.IndexResult{}, fmt.Errorf("gemini audio embedding failed: %w", err)
 	}
 
-	storedFilename, err := BuildStoredFilename(originalFilename)
+	absoluteSourcePath, err := filepath.Abs(sourcePath)
 	if err != nil {
-		return domain.IndexResult{}, fmt.Errorf("build stored filename: %w", err)
-	}
-
-	if err := s.storage.SaveAudio(ctx, storedFilename, audioBytes); err != nil {
-		return domain.IndexResult{}, fmt.Errorf("save audio file: %w", err)
+		return domain.IndexResult{}, fmt.Errorf("resolve audio path: %w", err)
 	}
 
 	record, err := s.repo.InsertAudioRecord(
 		ctx,
 		originalFilename,
-		storedFilename,
+		absoluteSourcePath,
 		mimeType,
 		int64(len(audioBytes)),
 		s.embedding.ModelName(),
@@ -104,7 +100,7 @@ func (s *Service) IndexAudioFile(ctx context.Context, sourcePath string) (domain
 	return domain.IndexResult{
 		ID:                  record.ID,
 		OriginalFilename:    record.OriginalFilename,
-		StoredFilename:      record.StoredFilename,
+		SourcePath:          record.SourcePath,
 		MIMEType:            record.MIMEType,
 		FileSizeBytes:       record.FileSizeBytes,
 		EmbeddingDimensions: record.EmbeddingDims,
@@ -165,8 +161,8 @@ func (s *Service) GetAudioRecord(ctx context.Context, id int64) (domain.AudioRec
 }
 
 // AudioPath は保存済み音声ファイルの実パスを返します。
-func (s *Service) AudioPath(storedFilename string) string {
-	return s.storage.AudioPath(storedFilename)
+func (s *Service) AudioPath(sourcePath string) string {
+	return s.storage.AudioPath(sourcePath)
 }
 
 // GenerateMusic はプロンプトから音楽を生成して保存し、返却用メタデータを返します。
@@ -216,7 +212,7 @@ func (s *Service) GenerateMusic(ctx context.Context, req domain.MusicGenerationR
 		record, err := s.repo.InsertAudioRecord(
 			ctx,
 			originalFilename,
-			storedFilename,
+			s.storage.AudioPath(storedFilename),
 			clip.MIMEType,
 			int64(len(clip.AudioData)),
 			s.embedding.ModelName(),

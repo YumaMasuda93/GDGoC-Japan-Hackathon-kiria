@@ -45,7 +45,7 @@ func (r *AudioRepository) Close() error {
 }
 
 // InsertAudioRecord は音声メタデータと埋め込みベクトルを保存します。
-func (r *AudioRepository) InsertAudioRecord(ctx context.Context, originalFilename, storedFilename, mimeType string, fileSizeBytes int64, embeddingModel string, embedding []float64) (domain.AudioRecord, error) {
+func (r *AudioRepository) InsertAudioRecord(ctx context.Context, originalFilename, sourcePath, mimeType string, fileSizeBytes int64, embeddingModel string, embedding []float64) (domain.AudioRecord, error) {
 	embeddingJSON, err := json.Marshal(embedding)
 	if err != nil {
 		return domain.AudioRecord{}, fmt.Errorf("marshal embedding: %w", err)
@@ -55,7 +55,7 @@ func (r *AudioRepository) InsertAudioRecord(ctx context.Context, originalFilenam
 	result, err := r.db.ExecContext(ctx, `
 		INSERT INTO audio_embeddings (
 			original_filename,
-			stored_filename,
+			source_path,
 			mime_type,
 			file_size_bytes,
 			embedding_model,
@@ -63,7 +63,7 @@ func (r *AudioRepository) InsertAudioRecord(ctx context.Context, originalFilenam
 			embedding_dimensions,
 			created_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, originalFilename, storedFilename, mimeType, fileSizeBytes, embeddingModel, string(embeddingJSON), len(embedding), createdAt.Format(time.RFC3339))
+	`, originalFilename, sourcePath, mimeType, fileSizeBytes, embeddingModel, string(embeddingJSON), len(embedding), createdAt.Format(time.RFC3339))
 	if err != nil {
 		return domain.AudioRecord{}, err
 	}
@@ -76,7 +76,7 @@ func (r *AudioRepository) InsertAudioRecord(ctx context.Context, originalFilenam
 	return domain.AudioRecord{
 		ID:               id,
 		OriginalFilename: originalFilename,
-		StoredFilename:   storedFilename,
+		SourcePath:       sourcePath,
 		MIMEType:         mimeType,
 		FileSizeBytes:    fileSizeBytes,
 		EmbeddingModel:   embeddingModel,
@@ -91,7 +91,7 @@ func (r *AudioRepository) GetAudioRecord(ctx context.Context, id int64) (domain.
 		SELECT
 			id,
 			original_filename,
-			stored_filename,
+			source_path,
 			mime_type,
 			file_size_bytes,
 			embedding_model,
@@ -106,7 +106,7 @@ func (r *AudioRepository) GetAudioRecord(ctx context.Context, id int64) (domain.
 	if err := row.Scan(
 		&record.ID,
 		&record.OriginalFilename,
-		&record.StoredFilename,
+		&record.SourcePath,
 		&record.MIMEType,
 		&record.FileSizeBytes,
 		&record.EmbeddingModel,
@@ -126,7 +126,7 @@ func (r *AudioRepository) ListAudioRecords(ctx context.Context) ([]domain.Stored
 		SELECT
 			id,
 			original_filename,
-			stored_filename,
+			source_path,
 			mime_type,
 			file_size_bytes,
 			embedding_model,
@@ -148,7 +148,7 @@ func (r *AudioRepository) ListAudioRecords(ctx context.Context) ([]domain.Stored
 		if err := rows.Scan(
 			&record.ID,
 			&record.OriginalFilename,
-			&record.StoredFilename,
+			&record.SourcePath,
 			&record.MIMEType,
 			&record.FileSizeBytes,
 			&record.EmbeddingModel,
@@ -183,7 +183,7 @@ func (r *AudioRepository) migrate() error {
 	CREATE TABLE IF NOT EXISTS audio_embeddings (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		original_filename TEXT NOT NULL,
-		stored_filename TEXT NOT NULL UNIQUE,
+		source_path TEXT NOT NULL UNIQUE,
 		mime_type TEXT NOT NULL,
 		file_size_bytes INTEGER NOT NULL,
 		embedding_model TEXT NOT NULL,
@@ -193,6 +193,47 @@ func (r *AudioRepository) migrate() error {
 	);
 	`
 
-	_, err := r.db.Exec(stmt)
+	if _, err := r.db.Exec(stmt); err != nil {
+		return err
+	}
+
+	return r.renameStoredFilenameColumn()
+}
+
+func (r *AudioRepository) renameStoredFilenameColumn() error {
+	rows, err := r.db.Query(`PRAGMA table_info(audio_embeddings)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	hasSourcePath := false
+	hasStoredFilename := false
+	for rows.Next() {
+		var cid int
+		var name string
+		var colType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		switch name {
+		case "source_path":
+			hasSourcePath = true
+		case "stored_filename":
+			hasStoredFilename = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if hasSourcePath || !hasStoredFilename {
+		return nil
+	}
+
+	_, err = r.db.Exec(`ALTER TABLE audio_embeddings RENAME COLUMN stored_filename TO source_path`)
 	return err
 }
