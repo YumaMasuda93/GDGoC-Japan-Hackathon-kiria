@@ -32,8 +32,51 @@ func (s *FileStore) SaveAudio(_ context.Context, sourcePath string, audioData []
 
 // AudioPath は保存済み音声ファイルのパスを返します。
 func (s *FileStore) AudioPath(sourcePath string) string {
-	if filepath.IsAbs(sourcePath) {
-		return sourcePath
+	for _, candidate := range s.audioPathCandidates(sourcePath) {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
 	}
-	return filepath.Join(s.audioDir, sourcePath)
+
+	candidates := s.audioPathCandidates(sourcePath)
+	if len(candidates) == 0 {
+		return filepath.Join(s.audioDir, sourcePath)
+	}
+	return candidates[len(candidates)-1]
+}
+
+func (s *FileStore) audioPathCandidates(sourcePath string) []string {
+	if sourcePath == "" {
+		return []string{filepath.Join(s.audioDir, sourcePath)}
+	}
+
+	candidates := make([]string, 0, 5)
+	seen := make(map[string]struct{})
+	appendCandidate := func(path string) {
+		if path == "" {
+			return
+		}
+
+		cleaned := filepath.Clean(path)
+		if _, ok := seen[cleaned]; ok {
+			return
+		}
+		seen[cleaned] = struct{}{}
+		candidates = append(candidates, cleaned)
+	}
+
+	if filepath.IsAbs(sourcePath) {
+		appendCandidate(sourcePath)
+	} else {
+		appendCandidate(sourcePath)
+		appendCandidate(filepath.Join(s.audioDir, sourcePath))
+	}
+
+	base := filepath.Base(sourcePath)
+	if base != "." && base != string(filepath.Separator) {
+		appendCandidate(filepath.Join(s.audioDir, base))
+		appendCandidate(filepath.Join(filepath.Dir(s.audioDir), "..", "seed", base))
+	}
+
+	return candidates
 }

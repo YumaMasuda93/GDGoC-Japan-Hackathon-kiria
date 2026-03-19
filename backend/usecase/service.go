@@ -79,15 +79,19 @@ func (s *Service) IndexAudioFile(ctx context.Context, sourcePath string) (domain
 		return domain.IndexResult{}, fmt.Errorf("gemini audio embedding failed: %w", err)
 	}
 
-	absoluteSourcePath, err := filepath.Abs(sourcePath)
+	storedFilename, err := BuildStoredFilename(originalFilename)
 	if err != nil {
-		return domain.IndexResult{}, fmt.Errorf("resolve audio path: %w", err)
+		return domain.IndexResult{}, fmt.Errorf("build stored filename: %w", err)
+	}
+
+	if err := s.storage.SaveAudio(ctx, storedFilename, audioBytes); err != nil {
+		return domain.IndexResult{}, fmt.Errorf("save indexed audio: %w", err)
 	}
 
 	record, err := s.repo.InsertAudioRecord(
 		ctx,
 		originalFilename,
-		absoluteSourcePath,
+		storedFilename,
 		mimeType,
 		int64(len(audioBytes)),
 		s.embedding.ModelName(),
@@ -212,7 +216,7 @@ func (s *Service) GenerateMusic(ctx context.Context, req domain.MusicGenerationR
 		record, err := s.repo.InsertAudioRecord(
 			ctx,
 			originalFilename,
-			s.storage.AudioPath(storedFilename),
+			storedFilename,
 			clip.MIMEType,
 			int64(len(clip.AudioData)),
 			s.embedding.ModelName(),
