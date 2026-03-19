@@ -143,9 +143,14 @@ func (s *Service) SearchByText(ctx context.Context, text string, limit int) ([]d
 		return nil, err
 	}
 
-	results := make([]domain.AudioRecord, 0, len(stored))
+	results := make([]domain.AudioRecord, 0)
 	for _, item := range stored {
 		record := item.Record
+		
+		if !s.storage.IsSeedFile(record.OriginalFilename) {
+			continue
+		}
+
 		record.SimilarityScore = cosineSimilarity(queryVector, item.Embedding)
 		record.DownloadURL = fmt.Sprintf("/api/audio/%d", record.ID)
 		results = append(results, record)
