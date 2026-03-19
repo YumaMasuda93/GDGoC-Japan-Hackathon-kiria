@@ -23,6 +23,24 @@ type SearchResponse = {
   results: SearchResult[];
 };
 
+type GeneratedClip = {
+  filename: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  downloadUrl: string;
+  indexedAudioId?: number;
+  indexedAudioUrl?: string;
+};
+
+type MusicGenerationResponse = {
+  prompt: string;
+  translatedPrompt?: string;
+  negativePrompt?: string;
+  model: string;
+  modelDisplayName?: string;
+  clips: GeneratedClip[];
+};
+
 type SelectedStep = {
   questionId: number;
   prompt: string;
@@ -82,22 +100,24 @@ function buildTrackCopy(track: SearchResult) {
   };
 }
 
-function buildFinalText(steps: SelectedStep[]) {
+function buildFinalPrompt(steps: SelectedStep[]) {
   return steps.map((step) => step.answer).join(" -> ");
 }
 
 export default function App() {
-  const [phase, setPhase] = useState<"intro" | "question" | "complete">("intro");
+  const [phase, setPhase] = useState<"intro" | "question" | "generating" | "complete">("intro");
   const [stepIndex, setStepIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   const [results, setResults] = useState<SelectedStep[]>([]);
   const [candidates, setCandidates] = useState<SearchResult[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [generatedMusic, setGeneratedMusic] = useState<MusicGenerationResponse | null>(null);
+  const [generationError, setGenerationError] = useState("");
 
   const currentQuestion = questions[stepIndex];
-  const finalText = useMemo(() => buildFinalText(results), [results]);
-  const finalTrack = results.length > 0 ? results[results.length - 1].selectedTrack : null;
+  const finalPrompt = useMemo(() => buildFinalPrompt(results), [results]);
+  const finalTrack = generatedMusic && generatedMusic.clips.length > 0 ? generatedMusic.clips[0] : null;
 
   function handleStart() {
     setPhase("question");
@@ -105,7 +125,9 @@ export default function App() {
     setAnswer("");
     setResults([]);
     setCandidates([]);
-    setError("");
+    setSearchError("");
+    setGeneratedMusic(null);
+    setGenerationError("");
   }
 
   async function handleSearch() {
@@ -113,8 +135,8 @@ export default function App() {
       return;
     }
 
-    setIsLoading(true);
-    setError("");
+    setIsSearching(true);
+    setSearchError("");
     setCandidates([]);
 
     try {
@@ -137,21 +159,21 @@ export default function App() {
       const nextCandidates = "results" in body ? body.results : [];
       setCandidates(nextCandidates);
       if (nextCandidates.length === 0) {
-        setError("一致する音声候補が見つかりませんでした。別の表現で試してください。");
+        setSearchError("一致する音声候補が見つかりませんでした。別の表現で試してください。");
       }
-    } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "検索に失敗しました");
+    } catch (error) {
+      setSearchError(error instanceof Error ? error.message : "検索に失敗しました");
     } finally {
-      setIsLoading(false);
+      setIsSearching(false);
     }
   }
 
-  function handleSelect(track: SearchResult) {
+  async function handleSelect(track: SearchResult) {
     if (!currentQuestion) {
       return;
     }
 
-    const next = [
+    const nextResults = [
       ...results,
       {
         questionId: currentQuestion.id,
@@ -161,17 +183,49 @@ export default function App() {
       },
     ];
 
-    setResults(next);
+    setResults(nextResults);
     setAnswer("");
     setCandidates([]);
-    setError("");
+    setSearchError("");
 
-    if (stepIndex === questions.length - 1) {
-      setPhase("complete");
+    if (stepIndex < questions.length - 1) {
+      setStepIndex((current) => current + 1);
       return;
     }
 
-    setStepIndex((current) => current + 1);
+    setPhase("generating");
+    setGenerationError("");
+    setGeneratedMusic(null);
+
+    try {
+      const prompt = buildFinalPrompt(nextResults);
+      const response = await fetch("/api/music/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt,
+          sampleCount: 1,
+        }),
+      });
+
+      const body = (await response.json()) as MusicGenerationResponse | { error?: string };
+      if (!response.ok) {
+        throw new Error("error" in body && body.error ? body.error : "最終曲の生成に失敗しました");
+      }
+
+      const generated = "clips" in body ? body : null;
+      if (!generated || generated.clips.length === 0) {
+        throw new Error("最終曲の生成結果が空でした");
+      }
+
+      setGeneratedMusic(generated);
+      setPhase("complete");
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "最終曲の生成に失敗しました");
+      setPhase("complete");
+    }
   }
 
   function handleRestart() {
@@ -180,7 +234,9 @@ export default function App() {
     setAnswer("");
     setResults([]);
     setCandidates([]);
-    setError("");
+    setSearchError("");
+    setGeneratedMusic(null);
+    setGenerationError("");
   }
 
   return (
@@ -192,8 +248,7 @@ export default function App() {
         <p className="eyebrow">Co-Creation Music Generator</p>
         <h1>音楽共同制作生成アプリ</h1>
         <p className="lead">
-          フロントで自由記述を送り、バックエンドの音声埋め込み検索から返ってきた候補を再生しながら、
-          5段階で曲の方向性を固めていくフローです。
+          自由記述を送信するとバックエンドが類似音声を返し、5段階の選択を経たあとに Lyria で最終曲を生成します。
         </p>
 
         {phase === "intro" ? (
@@ -208,9 +263,9 @@ export default function App() {
               const state =
                 index < results.length
                   ? "done"
-                  : index === stepIndex && phase !== "complete"
+                  : index === stepIndex && phase === "question"
                     ? "current"
-                    : phase === "complete"
+                    : phase === "generating" || phase === "complete"
                       ? "done"
                       : "todo";
 
@@ -246,9 +301,9 @@ export default function App() {
               <button
                 className="primary-button"
                 onClick={() => void handleSearch()}
-                disabled={answer.trim().length === 0 || isLoading}
+                disabled={answer.trim().length === 0 || isSearching}
               >
-                {isLoading ? "検索中..." : "候補を取得"}
+                {isSearching ? "検索中..." : "候補を取得"}
               </button>
             </div>
           </div>
@@ -256,10 +311,10 @@ export default function App() {
           <div className="tracks-panel">
             <div className="tracks-header">
               <h2>トラック候補</h2>
-              <p>バックエンドが返した類似音声を再生し、次の質問へ進む1件を選んでください。</p>
+              <p>バックエンドが返した類似音声を再生し、次の質問に進む1件を選択してください。</p>
             </div>
 
-            {error ? <p className="error-banner">{error}</p> : null}
+            {searchError ? <p className="error-banner">{searchError}</p> : null}
 
             <div className="track-grid">
               {candidates.length === 0 ? (
@@ -307,7 +362,7 @@ export default function App() {
                         </audio>
 
                         <div className="track-actions">
-                          <button className="primary-button" onClick={() => handleSelect(track)}>
+                          <button className="primary-button" onClick={() => void handleSelect(track)}>
                             この案を選択
                           </button>
                         </div>
@@ -321,28 +376,51 @@ export default function App() {
         </section>
       ) : null}
 
+      {phase === "generating" ? (
+        <section className="final-panel">
+          <div className="final-hero">
+            <p className="eyebrow">Generating</p>
+            <h2>Lyria で最終曲を生成しています</h2>
+            <p className="lead">
+              5つの回答を連結したプロンプトを使って、最終的な音楽クリップを生成しています。
+            </p>
+          </div>
+        </section>
+      ) : null}
+
       {phase === "complete" ? (
         <section className="final-panel">
           <div className="final-hero">
             <p className="eyebrow">Final Output</p>
             <h2>最終生成された音楽</h2>
             <p className="lead">
-              5つの質問を経て選ばれた候補をもとに、最終案として次の音声を採用します。
+              各質問への回答を連結したプロンプトをもとに、Lyria が生成した最終音源です。
             </p>
           </div>
+
+          {generationError ? <p className="error-banner">{generationError}</p> : null}
 
           {finalTrack ? (
             <div className="final-track">
               <div className="final-art" />
               <div className="final-copy">
-                <h3>{finalTrack.originalFilename}</h3>
-                <p>{finalText}</p>
+                <h3>{finalTrack.filename}</h3>
+                <p>入力プロンプト: {generatedMusic?.prompt ?? finalPrompt}</p>
+                <p>生成用プロンプト: {generatedMusic?.translatedPrompt ?? finalPrompt}</p>
+                <p>
+                  {generatedMusic?.modelDisplayName ?? generatedMusic?.model ?? "Lyria"} /{" "}
+                  {(finalTrack.fileSizeBytes / 1024).toFixed(1)} KB
+                </p>
                 <audio className="audio-player large-player" controls preload="none" src={finalTrack.downloadUrl}>
                   お使いのブラウザは audio 要素に対応していません。
                 </audio>
               </div>
             </div>
-          ) : null}
+          ) : (
+            <div className="empty-state">
+              <p>最終曲の生成に失敗しました。設定を確認して再実行してください。</p>
+            </div>
+          )}
 
           <div className="timeline">
             {results.map((item) => (

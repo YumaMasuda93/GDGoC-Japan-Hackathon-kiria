@@ -21,10 +21,11 @@ import (
 
 // Service は事前埋め込みとオンライン検索のユースケースをまとめます。
 type Service struct {
-	embedding domain.EmbeddingClient
-	music     domain.MusicGenerationClient
-	repo      domain.AudioRepository
-	storage   domain.AudioStorage
+	embedding  domain.EmbeddingClient
+	music      domain.MusicGenerationClient
+	translator domain.PromptTranslator
+	repo       domain.AudioRepository
+	storage    domain.AudioStorage
 }
 
 // NewService はアプリケーションの中核ユースケースを構築します。
@@ -40,6 +41,13 @@ func NewService(embedding domain.EmbeddingClient, repo domain.AudioRepository, s
 func NewServiceWithMusic(embedding domain.EmbeddingClient, music domain.MusicGenerationClient, repo domain.AudioRepository, storage domain.AudioStorage) *Service {
 	service := NewService(embedding, repo, storage)
 	service.music = music
+	return service
+}
+
+// NewServiceWithMusicAndTranslator は音楽生成と翻訳クライアント付きでユースケースを構築します。
+func NewServiceWithMusicAndTranslator(embedding domain.EmbeddingClient, music domain.MusicGenerationClient, translator domain.PromptTranslator, repo domain.AudioRepository, storage domain.AudioStorage) *Service {
+	service := NewServiceWithMusic(embedding, music, repo, storage)
+	service.translator = translator
 	return service
 }
 
@@ -175,17 +183,31 @@ func (s *Service) GenerateMusic(ctx context.Context, req domain.MusicGenerationR
 		return domain.MusicGenerationResponse{}, errors.New("music generation is not configured")
 	}
 
+	originalPrompt := strings.TrimSpace(req.Prompt)
+	req.Prompt = originalPrompt
+
+	translatedPrompt := originalPrompt
+	var err error
+	if s.translator != nil && originalPrompt != "" {
+		translatedPrompt, err = s.translator.TranslateToEnglish(ctx, originalPrompt)
+		if err != nil {
+			return domain.MusicGenerationResponse{}, fmt.Errorf("translate generation prompt failed: %w", err)
+		}
+		req.Prompt = translatedPrompt
+	}
+
 	output, err := s.music.GenerateMusic(ctx, req)
 	if err != nil {
 		return domain.MusicGenerationResponse{}, fmt.Errorf("lyria music generation failed: %w", err)
 	}
 
 	response := domain.MusicGenerationResponse{
-		Prompt:         strings.TrimSpace(req.Prompt),
-		NegativePrompt: strings.TrimSpace(req.NegativePrompt),
-		Model:          output.Model,
-		ModelDisplay:   output.ModelDisplay,
-		Clips:          make([]domain.GeneratedMusicClip, 0, len(output.Clips)),
+		Prompt:           originalPrompt,
+		TranslatedPrompt: translatedPrompt,
+		NegativePrompt:   strings.TrimSpace(req.NegativePrompt),
+		Model:            output.Model,
+		ModelDisplay:     output.ModelDisplay,
+		Clips:            make([]domain.GeneratedMusicClip, 0, len(output.Clips)),
 	}
 
 	for i, clip := range output.Clips {

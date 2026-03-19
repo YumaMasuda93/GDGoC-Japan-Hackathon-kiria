@@ -60,11 +60,12 @@ type GeneratedMusicClip struct {
 
 // MusicGenerationResponse は音楽生成APIのレスポンスです。
 type MusicGenerationResponse struct {
-	Prompt         string               `json:"prompt"`
-	NegativePrompt string               `json:"negativePrompt,omitempty"`
-	Model          string               `json:"model"`
-	ModelDisplay   string               `json:"modelDisplayName,omitempty"`
-	Clips          []GeneratedMusicClip `json:"clips"`
+	Prompt           string               `json:"prompt"`
+	TranslatedPrompt string               `json:"translatedPrompt,omitempty"`
+	NegativePrompt   string               `json:"negativePrompt,omitempty"`
+	Model            string               `json:"model"`
+	ModelDisplay     string               `json:"modelDisplayName,omitempty"`
+	Clips            []GeneratedMusicClip `json:"clips"`
 }
 
 // GeneratedAudioSample は生成モデルが返した音声データです。

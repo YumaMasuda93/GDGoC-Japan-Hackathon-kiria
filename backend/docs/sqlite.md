@@ -18,7 +18,7 @@
 | --- | --- | --- | --- |
 | `id` | `INTEGER` | Yes | 主キー。自動採番される音声ID |
 | `original_filename` | `TEXT` | Yes | 元音声ファイル名 |
-| `source_path` | `TEXT` | Yes | 元音声ファイルの参照先。現状は絶対パスを保存 |
+| `source_path` | `TEXT` | Yes | 音声ファイルの参照先。現状は主に `data/audio` 配下の相対パスを保存 |
 | `mime_type` | `TEXT` | Yes | 音声ファイルの MIME type |
 | `file_size_bytes` | `INTEGER` | Yes | 音声ファイルサイズ |
 | `embedding_model` | `TEXT` | Yes | 埋め込み生成に使ったモデル名 |
@@ -28,8 +28,8 @@
 
 ## 運用上の注意
 
-- `source_path` は元音声ファイルの絶対パスを指します。
-- そのため、元ファイルを移動または削除すると `/api/audio/{id}` で取得できなくなります。
+- `source_path` は主にアプリ管理下の相対パスです。`data/audio` 配下の保存ファイルを指す前提です。
+- 旧データや環境差分がある場合でも、サーバーは `data/audio` や `seed` を候補にパス解決します。
 - 埋め込みベクトルは `embedding_json` にそのまま保存しているため、件数が増えると検索コストは上がります。
 - 検索は現時点で全件走査 + コサイン類似度計算です。大量データ向けのベクトルDBは未導入です。
 - 旧実装で `stored_filename` カラムを持つ DB は、起動時 migration で `source_path` にリネームされます。
@@ -75,6 +75,6 @@ FROM audio_embeddings;
 ## 実行例
 
 ```bash
-cd /Users/yuma/Desktop/dev/kiria/backend
+cd backend
 sqlite3 data/kiria.db
 ```
