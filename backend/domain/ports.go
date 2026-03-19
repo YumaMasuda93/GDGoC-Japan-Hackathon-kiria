@@ -15,6 +15,12 @@ type MusicGenerationClient interface {
 	ModelName() string
 }
 
+// PromptTranslator は Lyria 入力前のテキスト翻訳を担当するポートです。
+type PromptTranslator interface {
+	TranslateToEnglish(ctx context.Context, text string) (string, error)
+	ModelName() string
+}
+
 // AudioRepository は音声メタデータと埋め込みベクトルを永続化するポートです。
 type AudioRepository interface {
 	InsertAudioRecord(ctx context.Context, originalFilename, sourcePath, mimeType string, fileSizeBytes int64, embeddingModel string, embedding []float64) (AudioRecord, error)
