@@ -17,7 +17,7 @@ type MusicGenerationClient interface {
 
 // AudioRepository は音声メタデータと埋め込みベクトルを永続化するポートです。
 type AudioRepository interface {
-	InsertAudioRecord(ctx context.Context, originalFilename, storedFilename, mimeType string, fileSizeBytes int64, embeddingModel string, embedding []float64) (AudioRecord, error)
+	InsertAudioRecord(ctx context.Context, originalFilename, sourcePath, mimeType string, fileSizeBytes int64, embeddingModel string, embedding []float64) (AudioRecord, error)
 	GetAudioRecord(ctx context.Context, id int64) (AudioRecord, error)
 	ListAudioRecords(ctx context.Context) ([]StoredAudioEmbedding, error)
 	Close() error
@@ -25,8 +25,8 @@ type AudioRepository interface {
 
 // AudioStorage は後で再生する音声ファイル本体を保存するポートです。
 type AudioStorage interface {
-	SaveAudio(ctx context.Context, storedFilename string, audioData []byte) error
-	AudioPath(storedFilename string) string
+	SaveAudio(ctx context.Context, sourcePath string, audioData []byte) error
+	AudioPath(sourcePath string) string
 }
 
 // StoredAudioEmbedding は音声メタデータと保存済みベクトルを束ねた値です。

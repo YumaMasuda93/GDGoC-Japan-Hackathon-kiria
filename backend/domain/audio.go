@@ -6,7 +6,7 @@ import "time"
 type AudioRecord struct {
 	ID               int64     `json:"id"`
 	OriginalFilename string    `json:"originalFilename"`
-	StoredFilename   string    `json:"storedFilename"`
+	SourcePath       string    `json:"sourcePath"`
 	MIMEType         string    `json:"mimeType"`
 	FileSizeBytes    int64     `json:"fileSizeBytes"`
 	EmbeddingModel   string    `json:"embeddingModel"`
@@ -22,10 +22,22 @@ type SearchRequest struct {
 	Limit int    `json:"limit"`
 }
 
+// SearchResultItem はフロントに返す検索結果1件を表します。
+type SearchResultItem struct {
+	ID               int64   `json:"id"`
+	OriginalFilename string  `json:"originalFilename"`
+	MIMEType         string  `json:"mimeType"`
+	FileSizeBytes    int64   `json:"fileSizeBytes"`
+	EmbeddingModel   string  `json:"embeddingModel"`
+	EmbeddingDims    int     `json:"embeddingDimensions"`
+	SimilarityScore  float64 `json:"similarityScore"`
+	DownloadURL      string  `json:"downloadUrl"`
+}
+
 // SearchResponse は類似度順に並んだ音声検索結果を表します。
 type SearchResponse struct {
-	Query   string        `json:"query"`
-	Results []AudioRecord `json:"results"`
+	Query   string             `json:"query"`
+	Results []SearchResultItem `json:"results"`
 }
 
 // MusicGenerationRequest はテキストから音楽を生成するリクエストです。
@@ -80,7 +92,7 @@ type HealthResponse struct {
 type IndexResult struct {
 	ID                  int64
 	OriginalFilename    string
-	StoredFilename      string
+	SourcePath          string
 	MIMEType            string
 	FileSizeBytes       int64
 	EmbeddingDimensions int

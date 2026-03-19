@@ -75,10 +75,10 @@ func indexFile(service *usecase.Service, path string) error {
 	}
 
 	log.Printf(
-		"indexed id=%d file=%s stored=%s mime=%s bytes=%d dims=%d",
+		"indexed id=%d file=%s source=%s mime=%s bytes=%d dims=%d",
 		result.ID,
 		result.OriginalFilename,
-		result.StoredFilename,
+		result.SourcePath,
 		result.MIMEType,
 		result.FileSizeBytes,
 		result.EmbeddingDimensions,
