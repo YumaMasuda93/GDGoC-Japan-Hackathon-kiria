@@ -309,7 +309,7 @@ export default function App() {
 
       <section className="hero-panel">
         <p className="eyebrow">Co-Creation Music Generator</p>
-        <h1>音楽共同制作アプリ</h1>
+        <h1>Vibe Create Music</h1>
         <p className="lead">
           自由記述を送信するとバックエンドが類似音声を返し、5段階の選択を経たあとに Lyria で最終曲を生成します。
         </p>
