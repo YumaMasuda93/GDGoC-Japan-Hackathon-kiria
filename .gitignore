@@ -4,3 +4,4 @@ backend/backend
 backend/output/
 .DS_Store
 .vscode
+all_datas_shuffle/
