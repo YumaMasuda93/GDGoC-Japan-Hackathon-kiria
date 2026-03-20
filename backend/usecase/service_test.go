@@ -163,6 +163,73 @@ func TestIndexAudioFileStoresManagedRelativePath(t *testing.T) {
 	}
 }
 
+func TestIndexAudioFileKeepsReferencedSourcePath(t *testing.T) {
+	root := t.TempDir()
+	audioDir := filepath.Join(root, "data", "audio")
+	store, err := storage.NewFileStore(audioDir)
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+
+	sourcePath := filepath.Join(root, "data", "all_datas_shuffle", "track_0001.wav")
+	audioData := []byte("RIFF....WAVE")
+	if err := os.MkdirAll(filepath.Dir(sourcePath), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(sourcePath, audioData, 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(cwd)
+	})
+
+	repo := &recordingRepo{}
+	service := NewService(stubEmbeddingClient{}, repo, store)
+
+	result, err := service.IndexAudioFileWithOptions(context.Background(), sourcePath, IndexAudioFileOptions{
+		ReferenceSourcePath: true,
+	})
+	if err != nil {
+		t.Fatalf("IndexAudioFileWithOptions() error = %v", err)
+	}
+	if len(repo.inserted) != 1 {
+		t.Fatalf("inserted count = %d, want 1", len(repo.inserted))
+	}
+
+	record := repo.inserted[0]
+	wantSourcePath := filepath.Join("data", "all_datas_shuffle", "track_0001.wav")
+	if record.SourcePath != wantSourcePath {
+		t.Fatalf("SourcePath = %q, want %q", record.SourcePath, wantSourcePath)
+	}
+
+	storedPath := store.AudioPath(record.SourcePath)
+	if storedPath != wantSourcePath {
+		t.Fatalf("stored path = %q, want %q", storedPath, wantSourcePath)
+	}
+	if _, err := os.Stat(storedPath); err != nil {
+		t.Fatalf("stored file missing at %q: %v", storedPath, err)
+	}
+
+	entries, err := os.ReadDir(audioDir)
+	if err != nil {
+		t.Fatalf("ReadDir() error = %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("audio dir entries = %d, want 0", len(entries))
+	}
+	if result.SourcePath != wantSourcePath {
+		t.Fatalf("result.SourcePath = %q, want %q", result.SourcePath, wantSourcePath)
+	}
+}
+
 func TestGenerateMusicStoresRelativeIndexedPath(t *testing.T) {
 	root := t.TempDir()
 	audioDir := filepath.Join(root, "data", "audio")

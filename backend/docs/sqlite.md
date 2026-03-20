@@ -18,7 +18,7 @@
 | --- | --- | --- | --- |
 | `id` | `INTEGER` | Yes | 主キー。自動採番される音声ID |
 | `original_filename` | `TEXT` | Yes | 元音声ファイル名 |
-| `source_path` | `TEXT` | Yes | 音声ファイルの参照先。現状は主に `data/audio` 配下の相対パスを保存 |
+| `source_path` | `TEXT` | Yes | 音声ファイルの参照先。`data/audio` 配下の保存ファイルか、`data/all_datas_shuffle` のような参照元相対パスを保存 |
 | `mime_type` | `TEXT` | Yes | 音声ファイルの MIME type |
 | `file_size_bytes` | `INTEGER` | Yes | 音声ファイルサイズ |
 | `embedding_model` | `TEXT` | Yes | 埋め込み生成に使ったモデル名 |
@@ -28,11 +28,12 @@
 
 ## 運用上の注意
 
-- `source_path` は主にアプリ管理下の相対パスです。`data/audio` 配下の保存ファイルを指す前提です。
-- 旧データや環境差分がある場合でも、サーバーは `data/audio` や `seed` を候補にパス解決します。
+- `source_path` は主にアプリ管理下の相対パスです。`data/audio` の保存ファイルだけでなく、`data/all_datas_shuffle` のような既存ライブラリを直接指すこともあります。
+- 旧データや環境差分がある場合でも、サーバーは `source_path` の実在確認を優先し、見つからない場合は `data/audio` や `seed` を候補にパス解決します。
 - 埋め込みベクトルは `embedding_json` にそのまま保存しているため、件数が増えると検索コストは上がります。
 - 検索は現時点で全件走査 + コサイン類似度計算です。大量データ向けのベクトルDBは未導入です。
 - 旧実装で `stored_filename` カラムを持つ DB は、起動時 migration で `source_path` にリネームされます。
+- `source_path` には `UNIQUE` 制約があるため、同じ参照元を重複登録できません。`indexer -reference -skip-existing` の再開実行前提です。
 
 ## 確認用 SQL
 

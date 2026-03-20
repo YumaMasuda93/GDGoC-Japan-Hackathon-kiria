@@ -44,6 +44,22 @@ func (r *AudioRepository) Close() error {
 	return r.db.Close()
 }
 
+// HasSourcePath は同じ source_path の音声レコードが存在するか返します。
+func (r *AudioRepository) HasSourcePath(sourcePath string) (bool, error) {
+	var exists int
+	err := r.db.QueryRow(`
+		SELECT EXISTS(
+			SELECT 1
+			FROM audio_embeddings
+			WHERE source_path = ?
+		)
+	`, sourcePath).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists == 1, nil
+}
+
 // InsertAudioRecord は音声メタデータと埋め込みベクトルを保存します。
 func (r *AudioRepository) InsertAudioRecord(ctx context.Context, originalFilename, sourcePath, mimeType string, fileSizeBytes int64, embeddingModel string, embedding []float64) (domain.AudioRecord, error) {
 	embeddingJSON, err := json.Marshal(embedding)

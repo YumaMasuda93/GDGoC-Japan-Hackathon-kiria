@@ -72,6 +72,30 @@ cd backend
 go run ./cmd/lyriabatch -count 100 -prompt-batch-size 10 -parallel 10
 ```
 
+### 既存ライブラリ 1000 曲を事前埋め込みする
+
+`backend/data/all_datas_shuffle` の 1000 曲をアプリ検索対象にしたい場合は、`backend` 配下で次を実行します。
+
+```bash
+cd backend
+RESET_DB=1 ./scripts/index_audio_library.sh
+```
+
+このスクリプトは以下を行います。
+
+- 既定で `backend/data/all_datas_shuffle` を走査
+- `RESET_DB=1` のとき `backend/data/kiria.db` を削除して作り直し
+- 各曲の埋め込みを Gemini で生成
+- 音源ファイルは `data/audio` へコピーせず、`data/all_datas_shuffle/...` をそのまま参照して DB 登録
+- 途中で失敗した場合は `./scripts/index_audio_library.sh` を再実行すると未登録分だけ続行
+
+個別に実行したい場合は、`indexer` へディレクトリを直接渡せます。
+
+```bash
+cd backend
+go run ./cmd/indexer -reference -skip-existing ./data/all_datas_shuffle
+```
+
 ### 3. フロントエンドを起動する
 
 別ターミナルで:

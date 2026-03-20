@@ -29,6 +29,11 @@ type Service struct {
 	output     domain.AudioStorage
 }
 
+// IndexAudioFileOptions は音声インデックス化の保存方式を制御します。
+type IndexAudioFileOptions struct {
+	ReferenceSourcePath bool
+}
+
 const uiGeneratedSourcePathPrefix = "ui-generated-"
 const recitationSafeNegativePrompt = "lyrics, vocals, recognizable melody, direct song imitation, copyrighted motif, verbatim phrases"
 
@@ -83,6 +88,11 @@ func (s *Service) Close() error {
 
 // IndexAudioFile はローカル音声を埋め込みし、元ファイル参照とベクトルを保存します。
 func (s *Service) IndexAudioFile(ctx context.Context, sourcePath string) (domain.IndexResult, error) {
+	return s.IndexAudioFileWithOptions(ctx, sourcePath, IndexAudioFileOptions{})
+}
+
+// IndexAudioFileWithOptions はローカル音声を埋め込みし、保存方式を選んで登録します。
+func (s *Service) IndexAudioFileWithOptions(ctx context.Context, sourcePath string, opts IndexAudioFileOptions) (domain.IndexResult, error) {
 	audioBytes, err := os.ReadFile(sourcePath)
 	if err != nil {
 		return domain.IndexResult{}, fmt.Errorf("read audio file: %w", err)
@@ -99,19 +109,22 @@ func (s *Service) IndexAudioFile(ctx context.Context, sourcePath string) (domain
 		return domain.IndexResult{}, fmt.Errorf("gemini audio embedding failed: %w", err)
 	}
 
-	storedFilename, err := BuildStoredFilename(originalFilename)
-	if err != nil {
-		return domain.IndexResult{}, fmt.Errorf("build stored filename: %w", err)
-	}
+	storedSourcePath := NormalizeIndexedSourcePath(sourcePath)
+	if !opts.ReferenceSourcePath {
+		storedSourcePath, err = BuildStoredFilename(originalFilename)
+		if err != nil {
+			return domain.IndexResult{}, fmt.Errorf("build stored filename: %w", err)
+		}
 
-	if err := s.storage.SaveAudio(ctx, storedFilename, audioBytes); err != nil {
-		return domain.IndexResult{}, fmt.Errorf("save indexed audio: %w", err)
+		if err := s.storage.SaveAudio(ctx, storedSourcePath, audioBytes); err != nil {
+			return domain.IndexResult{}, fmt.Errorf("save indexed audio: %w", err)
+		}
 	}
 
 	record, err := s.repo.InsertAudioRecord(
 		ctx,
 		originalFilename,
-		storedFilename,
+		storedSourcePath,
 		mimeType,
 		int64(len(audioBytes)),
 		s.embedding.ModelName(),
@@ -129,6 +142,42 @@ func (s *Service) IndexAudioFile(ctx context.Context, sourcePath string) (domain
 		FileSizeBytes:       record.FileSizeBytes,
 		EmbeddingDimensions: record.EmbeddingDims,
 	}, nil
+}
+
+// NormalizeIndexedSourcePath はインデックス登録用のソースパスをなるべく相対化します。
+func NormalizeIndexedSourcePath(sourcePath string) string {
+	cleaned := filepath.Clean(sourcePath)
+	if cleaned == "." {
+		return sourcePath
+	}
+	if !filepath.IsAbs(cleaned) {
+		return cleaned
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return cleaned
+	}
+
+	resolvedSourcePath := cleaned
+	if resolved, err := filepath.EvalSymlinks(cleaned); err == nil && resolved != "" {
+		resolvedSourcePath = resolved
+	}
+
+	resolvedCWD := cwd
+	if resolved, err := filepath.EvalSymlinks(cwd); err == nil && resolved != "" {
+		resolvedCWD = resolved
+	}
+
+	relative, err := filepath.Rel(resolvedCWD, resolvedSourcePath)
+	if err != nil {
+		return cleaned
+	}
+	if relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return cleaned
+	}
+
+	return filepath.Clean(relative)
 }
 
 // SearchByText はクエリをオンライン埋め込みし、近い音声を類似度順で返します。
