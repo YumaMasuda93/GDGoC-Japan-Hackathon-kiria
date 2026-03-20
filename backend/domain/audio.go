@@ -42,10 +42,11 @@ type SearchResponse struct {
 
 // MusicGenerationRequest はテキストから音楽を生成するリクエストです。
 type MusicGenerationRequest struct {
-	Prompt         string `json:"prompt"`
-	NegativePrompt string `json:"negativePrompt,omitempty"`
-	SampleCount    int    `json:"sampleCount,omitempty"`
-	Seed           *int64 `json:"seed,omitempty"`
+	Prompt           string  `json:"prompt"`
+	NegativePrompt   string  `json:"negativePrompt,omitempty"`
+	SampleCount      int     `json:"sampleCount,omitempty"`
+	Seed             *int64  `json:"seed,omitempty"`
+	SelectedAudioIDs []int64 `json:"selectedAudioIds,omitempty"`
 }
 
 // GeneratedMusicClip は生成済み音楽クリップの保存結果です。

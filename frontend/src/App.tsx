@@ -41,6 +41,12 @@ type MusicGenerationResponse = {
   clips: GeneratedClip[];
 };
 
+type MusicGenerationRequest = {
+  prompt: string;
+  sampleCount: number;
+  selectedAudioIds: number[];
+};
+
 type SelectedStep = {
   questionId: number;
   prompt: string;
@@ -57,28 +63,28 @@ type QuestionDraft = {
 const questions: Question[] = [
   {
     id: 1,
-    prompt: "この曲の最初の景色を言葉で教えてください。",
-    hint: "例: 深夜の高速道路、雨上がりの屋上、朝焼けの港",
+    prompt: "この曲は、どんな瞬間に流れていてほしい？",
+    hint: "例: 夜の帰り道、雨の日の部屋、海辺のドライブ、作業中、恋愛の余韻、一人で泣きたいとき",
   },
   {
     id: 2,
-    prompt: "どんな感情の揺れを入れたいですか？",
-    hint: "例: 高揚と不安、静けさの中の熱、やわらかな決意",
+    prompt: "その曲に、どんな感情をまとわせたい？",
+    hint: "例: うれしい、切ない、浮遊感、エモい、不穏、かわいい、深夜っぽい",
   },
   {
     id: 3,
-    prompt: "リズムやノリの方向性を自由に書いてください。",
-    hint: "例: 跳ねる、まっすぐ進む、ゆっくり波打つ、足元が重い",
+    prompt: "この曲の空気感をつくる音は？",
+    hint: "例: ピアノ、アコースティックギター、シンセ、重低音、ローファイ、きらきらした音",
   },
   {
     id: 4,
-    prompt: "入れたい音色や楽器の印象はありますか？",
-    hint: "例: 粒立つシンセ、湿ったピアノ、荒いドラム、息の近い声",
+    prompt: "感情は、どんなふうに動いていく？",
+    hint: "例: ずっと落ち着いたまま、サビで一気に広がる、少しずつ高まる、最後に余韻を残す",
   },
   {
     id: 5,
-    prompt: "最後に、この曲が着地する瞬間を描写してください。",
-    hint: "例: ふっと光が差す、余韻を残して消える、強く締める",
+    prompt: "この曲のメインフレーズは？",
+    hint: "例: 相変わらず、愛変わらず / 深夜の高速 D.live",
   },
 ];
 
@@ -108,6 +114,26 @@ function buildTrackCopy(track: SearchResult) {
 
 function buildFinalPrompt(steps: SelectedStep[]) {
   return steps.map((step) => step.answer).join(" -> ");
+}
+
+async function parseJSONResponse<T>(response: Response): Promise<T | { error?: string }> {
+  const text = await response.text();
+  if (text.trim().length === 0) {
+    return {
+      error:
+        response.ok
+          ? "サーバーから空のレスポンスが返りました。"
+          : `サーバー応答が空でした。HTTP ${response.status}`,
+    };
+  }
+
+  try {
+    return JSON.parse(text) as T | { error?: string };
+  } catch {
+    return {
+      error: `サーバー応答の解析に失敗しました。HTTP ${response.status}`,
+    };
+  }
 }
 
 function createQuestionDrafts() {
@@ -168,7 +194,7 @@ export default function App() {
         }),
       });
 
-      const body = (await response.json()) as SearchResponse | { error?: string };
+      const body = await parseJSONResponse<SearchResponse>(response);
       if (!response.ok) {
         throw new Error("error" in body && body.error ? body.error : "検索に失敗しました");
       }
@@ -224,18 +250,20 @@ export default function App() {
 
     try {
       const prompt = buildFinalPrompt(nextResults);
+      const request: MusicGenerationRequest = {
+        prompt,
+        sampleCount: 4,
+        selectedAudioIds: nextResults.map((step) => step.selectedTrack.id),
+      };
       const response = await fetch("/api/music/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          prompt,
-          sampleCount: 1,
-        }),
+        body: JSON.stringify(request),
       });
 
-      const body = (await response.json()) as MusicGenerationResponse | { error?: string };
+      const body = await parseJSONResponse<MusicGenerationResponse>(response);
       if (!response.ok) {
         throw new Error("error" in body && body.error ? body.error : "最終曲の生成に失敗しました");
       }
@@ -442,7 +470,7 @@ export default function App() {
             <p className="eyebrow">Generating</p>
             <h2>Lyria で最終曲を生成しています</h2>
             <p className="lead">
-              各質問への回答と音楽候補選択をもとに、最終的な音楽クリップを生成しています。
+              各質問への回答をもとに 4 本生成し、選択した音楽候補に最も近い 1 本を選びます。
             </p>
           </div>
         </section>
@@ -454,7 +482,7 @@ export default function App() {
             <p className="eyebrow">Final Output</p>
             <h2>最終生成された音楽</h2>
             <p className="lead">
-              各質問への回答と音楽候補選択をもとに、Lyria が生成した最終音源です。
+              Lyria が生成した 4 本から、あなたが選んだ音楽候補に最も近かった最終音源です。
             </p>
           </div>
 
@@ -464,7 +492,7 @@ export default function App() {
             <div className="final-track">
               <div className="final-art" />
               <div className="final-copy">
-                <h3>{finalTrack.filename}</h3>
+                <h3>最終生成トラック</h3>
                 <p>入力プロンプト: {generatedMusic?.prompt ?? finalPrompt}</p>
                 <p>生成用プロンプト: {generatedMusic?.translatedPrompt ?? finalPrompt}</p>
                 <p>

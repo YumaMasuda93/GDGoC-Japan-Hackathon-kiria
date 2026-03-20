@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,15 +26,58 @@ func (stubEmbeddingClient) ModelName() string {
 	return "stub-model"
 }
 
-type stubMusicClient struct {
-	output domain.MusicGenerationOutput
+type configurableEmbeddingClient struct {
+	defaultAudioVector []float64
+	audioVectors       map[string][]float64
 }
 
-func (s stubMusicClient) GenerateMusic(_ context.Context, _ domain.MusicGenerationRequest) (domain.MusicGenerationOutput, error) {
+func (c configurableEmbeddingClient) EmbedText(_ context.Context, text string) ([]float64, error) {
+	return []float64{float64(len(text))}, nil
+}
+
+func (c configurableEmbeddingClient) EmbedAudio(_ context.Context, _ string, _ []byte, title string) ([]float64, error) {
+	if vector, ok := c.audioVectors[title]; ok {
+		return append([]float64(nil), vector...), nil
+	}
+	return append([]float64(nil), c.defaultAudioVector...), nil
+}
+
+func (configurableEmbeddingClient) ModelName() string {
+	return "stub-model"
+}
+
+type stubTranslator struct {
+	translated string
+}
+
+func (s stubTranslator) TranslateToEnglish(_ context.Context, _ string) (string, error) {
+	return s.translated, nil
+}
+
+func (stubTranslator) ModelName() string {
+	return "stub-translator"
+}
+
+type stubMusicClient struct {
+	output   domain.MusicGenerationOutput
+	outputs  []domain.MusicGenerationOutput
+	errors   []error
+	requests []domain.MusicGenerationRequest
+}
+
+func (s *stubMusicClient) GenerateMusic(_ context.Context, req domain.MusicGenerationRequest) (domain.MusicGenerationOutput, error) {
+	s.requests = append(s.requests, req)
+	callIndex := len(s.requests) - 1
+	if callIndex < len(s.errors) && s.errors[callIndex] != nil {
+		return domain.MusicGenerationOutput{}, s.errors[callIndex]
+	}
+	if callIndex < len(s.outputs) {
+		return s.outputs[callIndex], nil
+	}
 	return s.output, nil
 }
 
-func (stubMusicClient) ModelName() string {
+func (*stubMusicClient) ModelName() string {
 	return "stub-music-model"
 }
 
@@ -133,19 +177,20 @@ func TestGenerateMusicStoresRelativeIndexedPath(t *testing.T) {
 	}
 
 	repo := &recordingRepo{}
-	service := NewServiceWithMusic(
-		stubEmbeddingClient{},
-		stubMusicClient{
-			output: domain.MusicGenerationOutput{
-				Model: "stub-lyria",
-				Clips: []domain.GeneratedAudioSample{
-					{
-						MIMEType:  "audio/wav",
-						AudioData: []byte("RIFF....WAVE"),
-					},
+	musicClient := &stubMusicClient{
+		output: domain.MusicGenerationOutput{
+			Model: "stub-lyria",
+			Clips: []domain.GeneratedAudioSample{
+				{
+					MIMEType:  "audio/wav",
+					AudioData: []byte("RIFF....WAVE"),
 				},
 			},
 		},
+	}
+	service := NewServiceWithMusic(
+		stubEmbeddingClient{},
+		musicClient,
 		repo,
 		store,
 	)
@@ -182,6 +227,12 @@ func TestGenerateMusicStoresRelativeIndexedPath(t *testing.T) {
 	if strings.HasPrefix(storedPath, audioDir) {
 		t.Fatalf("stored path = %q, should not be under %q", storedPath, audioDir)
 	}
+	if len(musicClient.requests) != 1 {
+		t.Fatalf("request count = %d, want 1", len(musicClient.requests))
+	}
+	if musicClient.requests[0].SampleCount != 1 {
+		t.Fatalf("SampleCount = %d, want 1", musicClient.requests[0].SampleCount)
+	}
 }
 
 func TestStoreGeneratedClipKeepsSearchablePath(t *testing.T) {
@@ -195,7 +246,7 @@ func TestStoreGeneratedClipKeepsSearchablePath(t *testing.T) {
 	repo := &recordingRepo{}
 	service := NewServiceWithMusic(
 		stubEmbeddingClient{},
-		stubMusicClient{},
+		&stubMusicClient{},
 		repo,
 		store,
 	)
@@ -217,6 +268,154 @@ func TestStoreGeneratedClipKeepsSearchablePath(t *testing.T) {
 	}
 	if clip.Filename != record.SourcePath {
 		t.Fatalf("clip.Filename = %q, want %q", clip.Filename, record.SourcePath)
+	}
+}
+
+func TestGenerateMusicRanksCandidatesBySelectedAudio(t *testing.T) {
+	root := t.TempDir()
+	audioDir := filepath.Join(root, "data", "audio")
+	store, err := storage.NewFileStore(audioDir)
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+	outputDir := filepath.Join(root, "output")
+	outputStore, err := storage.NewFileStore(outputDir)
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+
+	repo := &recordingRepo{
+		listed: []domain.StoredAudioEmbedding{
+			{
+				Record:    domain.AudioRecord{ID: 11, SourcePath: "selected-a.wav"},
+				Embedding: []float64{1, 0},
+			},
+			{
+				Record:    domain.AudioRecord{ID: 22, SourcePath: "selected-b.wav"},
+				Embedding: []float64{0, 1},
+			},
+		},
+	}
+	musicClient := &stubMusicClient{
+		output: domain.MusicGenerationOutput{
+			Model: "stub-lyria",
+			Clips: []domain.GeneratedAudioSample{
+				{MIMEType: "audio/wav", AudioData: []byte("candidate-1")},
+				{MIMEType: "audio/wav", AudioData: []byte("candidate-2")},
+				{MIMEType: "audio/wav", AudioData: []byte("candidate-3")},
+				{MIMEType: "audio/wav", AudioData: []byte("candidate-4")},
+			},
+		},
+	}
+	service := NewServiceWithMusic(
+		configurableEmbeddingClient{
+			defaultAudioVector: []float64{1, 0},
+			audioVectors: map[string][]float64{
+				"lyria-generated-candidate-1.wav": {1, 0},
+				"lyria-generated-candidate-2.wav": {0, 1},
+				"lyria-generated-candidate-3.wav": {0.8, 0.8},
+				"lyria-generated-candidate-4.wav": {0.2, 0},
+			},
+		},
+		musicClient,
+		repo,
+		store,
+	)
+	service.SetGeneratedOutputStorage(outputStore)
+
+	resp, err := service.GenerateMusic(context.Background(), domain.MusicGenerationRequest{
+		Prompt:           "test",
+		SampleCount:      4,
+		SelectedAudioIDs: []int64{11, 22},
+	})
+	if err != nil {
+		t.Fatalf("GenerateMusic() error = %v", err)
+	}
+	if len(resp.Clips) != 1 {
+		t.Fatalf("clips count = %d, want 1", len(resp.Clips))
+	}
+	if len(musicClient.requests) != 1 {
+		t.Fatalf("request count = %d, want 1", len(musicClient.requests))
+	}
+	if musicClient.requests[0].SampleCount != 4 {
+		t.Fatalf("SampleCount = %d, want 4", musicClient.requests[0].SampleCount)
+	}
+	if len(musicClient.requests[0].SelectedAudioIDs) != 2 {
+		t.Fatalf("SelectedAudioIDs count = %d, want 2", len(musicClient.requests[0].SelectedAudioIDs))
+	}
+
+	storedPath := outputStore.AudioPath(resp.Clips[0].Filename)
+	audioData, err := os.ReadFile(storedPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error = %v", storedPath, err)
+	}
+	if string(audioData) != "candidate-3" {
+		t.Fatalf("stored audio = %q, want candidate-3", string(audioData))
+	}
+}
+
+func TestGenerateMusicRetriesRecitationBlockedPrompt(t *testing.T) {
+	root := t.TempDir()
+	audioDir := filepath.Join(root, "data", "audio")
+	store, err := storage.NewFileStore(audioDir)
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+	outputDir := filepath.Join(root, "output")
+	outputStore, err := storage.NewFileStore(outputDir)
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+
+	repo := &recordingRepo{}
+	musicClient := &stubMusicClient{
+		errors: []error{
+			errors.New("status 400: Audio generation failed with the following error: All responses were blocked by recitation checks."),
+			nil,
+		},
+		outputs: []domain.MusicGenerationOutput{
+			{},
+			{
+				Model: "stub-lyria",
+				Clips: []domain.GeneratedAudioSample{
+					{MIMEType: "audio/wav", AudioData: []byte("retry-success")},
+				},
+			},
+		},
+	}
+	service := NewServiceWithMusicAndTranslator(
+		stubEmbeddingClient{},
+		musicClient,
+		stubTranslator{translated: "midnight express with bright synth pulses"},
+		repo,
+		store,
+	)
+	service.SetGeneratedOutputStorage(outputStore)
+
+	resp, err := service.GenerateMusic(context.Background(), domain.MusicGenerationRequest{
+		Prompt:      "「真夜中の高速道路」みたいな感じ",
+		SampleCount: 4,
+	})
+	if err != nil {
+		t.Fatalf("GenerateMusic() error = %v", err)
+	}
+	if len(resp.Clips) != 1 {
+		t.Fatalf("clips count = %d, want 1", len(resp.Clips))
+	}
+	if len(musicClient.requests) != 2 {
+		t.Fatalf("request count = %d, want 2", len(musicClient.requests))
+	}
+	if !strings.Contains(musicClient.requests[0].Prompt, "Compose a fully original instrumental track.") {
+		t.Fatalf("first prompt = %q, want originality guard", musicClient.requests[0].Prompt)
+	}
+	if !strings.Contains(musicClient.requests[1].Prompt, "Create a new, original instrumental piece using only high-level musical attributes.") {
+		t.Fatalf("second prompt = %q, want retry guard", musicClient.requests[1].Prompt)
+	}
+	if musicClient.requests[1].NegativePrompt != recitationSafeNegativePrompt {
+		t.Fatalf("NegativePrompt = %q, want %q", musicClient.requests[1].NegativePrompt, recitationSafeNegativePrompt)
+	}
+	if resp.TranslatedPrompt != musicClient.requests[1].Prompt {
+		t.Fatalf("TranslatedPrompt = %q, want %q", resp.TranslatedPrompt, musicClient.requests[1].Prompt)
 	}
 }
 

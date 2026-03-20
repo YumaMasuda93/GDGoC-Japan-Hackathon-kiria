@@ -173,7 +173,8 @@ func (h *HTTPHandler) GenerateMusicHandler(w http.ResponseWriter, r *http.Reques
 		switch {
 		case strings.Contains(err.Error(), "prompt is required"),
 			strings.Contains(err.Error(), "sampleCount"),
-			strings.Contains(err.Error(), "seed cannot be used"):
+			strings.Contains(err.Error(), "seed cannot be used"),
+			strings.Contains(err.Error(), "selected audio ids not found"):
 			status = http.StatusBadRequest
 		case strings.Contains(err.Error(), "music generation is not configured"):
 			status = http.StatusServiceUnavailable

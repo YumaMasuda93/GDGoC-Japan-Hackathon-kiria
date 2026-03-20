@@ -35,7 +35,7 @@ func (t *Translator) TranslateToEnglish(ctx context.Context, text string) (strin
 		SystemInstruction: &generateContent{
 			Parts: []generatePart{
 				{
-					Text: "Translate the user's music-generation prompt into concise natural English for a music model. Preserve mood, instrumentation, rhythm, and scene details. Return only the English translation.",
+					Text: "Translate the user's music-generation prompt into concise natural English for a music model. Preserve mood, instrumentation, rhythm, and scene details, but abstract away any lyric-like wording, quoted phrases, artist references, song-title references, or other uniquely identifying expressions. Do not preserve recognizable lines verbatim. Return only the English translation.",
 				},
 			},
 		},

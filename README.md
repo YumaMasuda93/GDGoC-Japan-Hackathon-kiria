@@ -43,11 +43,12 @@ go run cmd/server/main.go
 {
   "prompt": "An energetic electronic dance track with a fast tempo and bright synths.",
   "negativePrompt": "vocals, slow tempo",
-  "sampleCount": 2
+  "sampleCount": 4,
+  "selectedAudioIds": [12, 18, 31, 42, 57]
 }
 ```
 
-レスポンスには保存済み WAV の URL (`/api/generated/...`) が返ります。埋め込み生成にも成功した場合は検索用の `/api/audio/{id}` も返ります。
+`selectedAudioIds` を渡すと、サーバーは複数クリップを生成して各クリップを埋め込み化し、選択済み音源群との平均類似度が最も高い 1 本を返します。レスポンスには保存済み WAV の URL (`/api/generated/...`) が返ります。埋め込み生成にも成功した場合は検索用の `/api/audio/{id}` も返ります。
 
 100 曲まとめて生成したい場合は、`backend` 配下で次を実行します。
 
