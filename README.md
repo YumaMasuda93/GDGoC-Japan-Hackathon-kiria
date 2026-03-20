@@ -74,7 +74,9 @@ go run ./cmd/lyriabatch -count 100 -prompt-batch-size 10 -parallel 10
 
 ### 既存ライブラリ 1000 曲を事前埋め込みする
 
-`backend/data/all_datas_shuffle` の 1000 曲をアプリ検索対象にしたい場合は、`backend` 配下で次を実行します。
+事前に、[Google Drive の zip ファイル](https://drive.google.com/file/d/1Av_DQuH4GtZ7lWCQ2QuOuqEZahgzq7vg/view?usp=sharing)をダウンロードして展開し、展開後のフォルダを `backend/data` の中に配置してください。
+
+`backend/data/all_datas_shuffle` の 1000 曲を別データに置き換えた場合は、`backend` 配下で次を実行します。
 
 ```bash
 cd backend
