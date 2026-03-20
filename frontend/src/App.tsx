@@ -281,7 +281,7 @@ export default function App() {
 
       <section className="hero-panel">
         <p className="eyebrow">Co-Creation Music Generator</p>
-        <h1>音楽共同制作生成アプリ</h1>
+        <h1>音楽共同制作アプリ</h1>
         <p className="lead">
           自由記述を送信するとバックエンドが類似音声を返し、5段階の選択を経たあとに Lyria で最終曲を生成します。
         </p>
@@ -442,7 +442,7 @@ export default function App() {
             <p className="eyebrow">Generating</p>
             <h2>Lyria で最終曲を生成しています</h2>
             <p className="lead">
-              5つの回答を連結したプロンプトを使って、最終的な音楽クリップを生成しています。
+              各質問への回答と音楽候補選択をもとに、最終的な音楽クリップを生成しています。
             </p>
           </div>
         </section>
@@ -454,7 +454,7 @@ export default function App() {
             <p className="eyebrow">Final Output</p>
             <h2>最終生成された音楽</h2>
             <p className="lead">
-              各質問への回答を連結したプロンプトをもとに、Lyria が生成した最終音源です。
+              各質問への回答と音楽候補選択をもとに、Lyria が生成した最終音源です。
             </p>
           </div>
 

@@ -3,3 +3,4 @@ frontend/dist
 backend/backend
 backend/output/
 .DS_Store
+.vscode
