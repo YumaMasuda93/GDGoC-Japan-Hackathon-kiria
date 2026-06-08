@@ -1,4 +1,7 @@
-# kiria
+# Google Developer Groups on Campus Japan Hackation - kiria
+
+ユーザーの言葉から近い楽曲をたどり、最後に新しい音楽を生成する共創型の音楽生成アプリです。
+5つの質問に答えると、各ステップで既存音源の類似候補を提示し、その選択結果をもとにバックエンドが Lyria で最終曲を生成します。
 
 ハッカソンチーム: kiria
 
